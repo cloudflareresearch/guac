@@ -14,6 +14,7 @@ users pin this crate by Git revision.
   against an in-process Anchor and Moderator.
 - `tests/`: transcripts, encodings, grant storage, epoch rotation; `tests/browser.cjs` checks the
   Wasm bindings in Node. `tests/vectors/transcripts.json` is checked in.
+  `tests/credential_lifecycle.rs` exercises generated end-to-end flows with proptest.
 - `fuzz/`: standalone cargo-fuzz targets for grants and HTTP fields; run instructions in `fuzz/README.md`.
 - `examples/`: `flow` (full exchange), `generate_vectors`.
 - `scripts/emsdk.mjs`: pinned Emscripten for `wasm32-unknown-emscripten`.
