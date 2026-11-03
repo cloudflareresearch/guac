@@ -1,9 +1,8 @@
 # 🥑 guac --- a MOLE implementation
 
-Rust implementation of [MOLE](https://moderation-of-unlinkable-endorsements.github.io/internet-drafts/draft-jms-mole-architecture.html)
-(Moderation of unLinkable Endorsements).
+Rust implementation of MOLE (Moderation of unLinkable Endorsements) [architecture](https://datatracker.ietf.org/doc/draft-jms-mole-architecture/), [protocol](https://datatracker.ietf.org/doc/draft-jms-mole-transport/), and [HTTP transport](https://datatracker.ietf.org/doc/draft-jms-mole-http-transport/).
 
-Anchors vouch for a Client with [EC-IHAT](https://moderation-of-unlinkable-endorsements.github.io/internet-drafts/draft-authors-mole-ec-ihat.html) endorsements. Moderators turn them into [EC-ACT](https://moderation-of-unlinkable-endorsements.github.io/internet-drafts/draft-authors-mole-ec-act.html) credit tokens, which Clients spend without being linked across requests.
+Anchors vouch for a Client with [EC-IHAT](https://datatracker.ietf.org/doc/draft-ladd-mole-ec-ihat/) endorsements. Moderators turn them into [EC-ACT](https://datatracker.ietf.org/doc/draft-schlesinger-mole-ec-act/) credit tokens, which Clients spend without being linked across requests.
 
 > [!WARNING]
 > Experimental. APIs and wire formats will change as the specifications evolve.
