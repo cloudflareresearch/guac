@@ -1,0 +1,31 @@
+[package]
+name = "guac-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2024"
+rust-version = "1.88"
+license = "Apache-2.0"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+guac = { path = ".." }
+
+[workspace]
+members = ["."]
+
+[[bin]]
+name = "grant"
+path = "fuzz_targets/grant.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "http"
+path = "fuzz_targets/http.rs"
+test = false
+doc = false
+bench = false

@@ -1,0 +1,4 @@
+[target.wasm32-unknown-emscripten]
+runner = "node"
+# P-256 precomputed table initialization exceeds Emscripten's 64 KiB default.
+rustflags = ["-C", "link-arg=-sSTACK_SIZE=8388608"]

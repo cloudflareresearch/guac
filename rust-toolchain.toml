@@ -1,0 +1,4 @@
+[toolchain]
+channel = "stable"
+# Browser bindings and Emscripten builds; rustup installs these on first use.
+targets = ["wasm32-unknown-unknown", "wasm32-unknown-emscripten"]

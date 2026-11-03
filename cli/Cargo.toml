@@ -1,0 +1,29 @@
+[package]
+name = "guac-cli"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.88"
+description = "Command-line MOLE client: endorsements, credentials, and guac curl"
+license = "Apache-2.0"
+repository = "https://github.com/cloudflareresearch/guac"
+publish = false
+
+[[bin]]
+name = "guac"
+path = "src/main.rs"
+doc = false
+
+[dependencies]
+guac = { path = ".." }
+anyhow = "1"
+base64 = "0.22"
+clap = { version = "4", features = ["derive"] }
+dirs = "6"
+getrandom = "0.4"
+rusqlite = { version = "0.37", features = ["bundled"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.11"
+tempfile = "3"
+url = { version = "2", features = ["serde"] }
+zeroize = "1"
