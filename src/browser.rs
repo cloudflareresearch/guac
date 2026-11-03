@@ -164,7 +164,7 @@ impl ModeratorConfig {
 #[wasm_bindgen]
 pub struct PendingGrant {
     request: protocol::EndorsementRequest,
-    pending: crate::PendingGrant,
+    pending: Option<crate::PendingGrant>,
 }
 
 /// Asks for up to `count` (1 to 65535) endorsements; the Anchor may grant fewer.
@@ -172,14 +172,18 @@ pub struct PendingGrant {
 pub fn start_grant(configuration: &AnchorConfig, count: u16) -> Result<PendingGrant, JsValue> {
     let count = std::num::NonZeroU16::new(count).ok_or(crate::Error::Malformed)?;
     let (request, pending) = crate::Client.start_grant(&configuration.0, count);
-    Ok(PendingGrant { request, pending })
+    Ok(PendingGrant {
+        request,
+        pending: Some(pending),
+    })
 }
 
 #[wasm_bindgen]
 impl PendingGrant {
     #[wasm_bindgen(js_name = toStorageBytes)]
-    pub fn to_storage_bytes(&self) -> Uint8Array {
-        Uint8Array::from(self.pending.to_storage_bytes().as_slice())
+    pub fn to_storage_bytes(&self) -> Result<Uint8Array, JsValue> {
+        let pending = self.pending.as_ref().ok_or_else(|| consumed("grant"))?;
+        Ok(Uint8Array::from(pending.to_storage_bytes().as_slice()))
     }
 
     #[wasm_bindgen(js_name = fromStorageBytes)]
@@ -191,7 +195,10 @@ impl PendingGrant {
         let bytes = secret(bytes);
         Ok(Self {
             request: protocol::EndorsementRequest::from_bytes(original_request)?,
-            pending: crate::PendingGrant::from_storage_bytes(&bytes, &configuration.0)?,
+            pending: Some(crate::PendingGrant::from_storage_bytes(
+                &bytes,
+                &configuration.0,
+            )?),
         })
     }
 
@@ -201,12 +208,13 @@ impl PendingGrant {
         self.request.to_bytes()
     }
 
-    /// Checks the response `Content-Type` before consuming this continuation.
-    pub fn advance(self, response: &[u8], content_type: &str) -> Result<GrantStep, JsValue> {
+    /// A wrong `Content-Type` or malformed body retains this continuation; an
+    /// invalid response consumes it.
+    pub fn advance(&mut self, response: &[u8], content_type: &str) -> Result<GrantStep, JsValue> {
         http::check_content_type(content_type, http::ENDORSEMENT_RESPONSE)?;
-        Ok(GrantStep(self.pending.advance(
-            &protocol::EndorsementResponse::from_bytes(response)?,
-        )?))
+        let response = protocol::EndorsementResponse::from_bytes(response)?;
+        let pending = self.pending.take().ok_or_else(|| consumed("grant"))?;
+        Ok(GrantStep(pending.advance(&response)?))
     }
 }
 
@@ -223,9 +231,10 @@ impl GrantStep {
     #[wasm_bindgen(js_name = continueGrant)]
     pub fn continue_grant(self) -> Result<PendingGrant, JsValue> {
         match self.0 {
-            crate::GrantStep::Continue { request, pending } => {
-                Ok(PendingGrant { request, pending })
-            }
+            crate::GrantStep::Continue { request, pending } => Ok(PendingGrant {
+                request,
+                pending: Some(pending),
+            }),
             crate::GrantStep::Complete(_) => Err(js_error("grant already complete", "state")),
         }
     }
@@ -368,15 +377,16 @@ impl PendingIssuance {
         configuration: &ModeratorConfig,
     ) -> Result<PendingIssuance, JsValue> {
         let bytes = secret(bytes);
-        let Some(Authorization::Issue(_)) = Authorization::parse(authorization)? else {
+        let Some(Authorization::Issue(request)) = Authorization::parse(authorization)? else {
             return Err(Error::Malformed.into());
         };
+        let pending = crate::PendingIssuance::from_storage_bytes(&bytes, &configuration.0)?;
+        if !pending.binds(&request) {
+            return Err(Error::Mismatch.into());
+        }
         Ok(Self {
             authorization: authorization.to_owned(),
-            pending: Some(crate::PendingIssuance::from_storage_bytes(
-                &bytes,
-                &configuration.0,
-            )?),
+            pending: Some(pending),
         })
     }
 }

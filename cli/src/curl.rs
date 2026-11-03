@@ -441,16 +441,11 @@ fn settle(
         bail!("no response from the server");
     };
     let status = head.status;
-    let update = match head.mole_credential() {
-        Ok(Some(CredentialField::Update(update))) => update,
-        field => {
-            request.deliver(&run)?;
-            match field {
-                Ok(None) => bail!("server answered HTTP {status} without a credential update"),
-                Ok(Some(_)) => bail!("server answered HTTP {status} with an issuance response"),
-                Err(e) => return Err(e),
-            }
-        }
+    // Without an update the exchange stays pending: leave the requested output untouched.
+    let update = match head.mole_credential()? {
+        Some(CredentialField::Update(update)) => update,
+        None => bail!("server answered HTTP {status} without a credential update"),
+        Some(_) => bail!("server answered HTTP {status} with an issuance response"),
     };
     store_update(store, row, &update, out)?;
     Ok((run, status))

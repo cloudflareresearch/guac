@@ -1,6 +1,6 @@
 use guac::{
     Error,
-    http::{Authorization, Challenge, CredentialField},
+    http::{Authorization, Challenge, CredentialField, ENDORSEMENT_RESPONSE, check_content_type},
     protocol::{
         CredentialChallenge, CredentialPresentation, CredentialRequest, CredentialUpdate,
         ModeratorChallenge,
@@ -176,4 +176,24 @@ fn moderator_endpoint_requires_https_or_loopback_http() {
     ] {
         assert!(config(bad).is_err(), "{bad}");
     }
+}
+
+#[test]
+fn content_type_parameters() {
+    let check = |value| check_content_type(value, ENDORSEMENT_RESPONSE);
+    check(ENDORSEMENT_RESPONSE).unwrap();
+    check("Application/Mole-Endorsement-Response ; x=\"a;b\\\"\";TYPE=\"0002\"").unwrap();
+    // A `type=` inside a quoted value is not a parameter.
+    assert!(matches!(
+        check("application/mole-endorsement-response; x=\"a;type=0002\""),
+        Err(Error::Mismatch)
+    ));
+    assert!(matches!(
+        check("application/mole-endorsement-response; type=0002; type=0002"),
+        Err(Error::Mismatch)
+    ));
+    assert!(matches!(
+        check("application/mole-endorsement-response; type=\"0002"),
+        Err(Error::Malformed)
+    ));
 }

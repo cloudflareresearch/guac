@@ -159,9 +159,12 @@ pub struct Scratch(tempfile::TempDir);
 
 impl Scratch {
     pub fn new() -> Result<Self> {
+        let mut builder = tempfile::Builder::new();
+        builder.prefix("guac-");
+        #[cfg(unix)]
+        builder.permissions(std::os::unix::fs::PermissionsExt::from_mode(0o700));
         Ok(Self(
-            tempfile::Builder::new()
-                .prefix("guac-")
+            builder
                 .tempdir()
                 .context("cannot create a private temporary directory")?,
         ))
@@ -268,7 +271,8 @@ pub fn request(
     }
     args.push(url.as_str().into());
     let run = curl(&scratch, "response", &args)?;
-    let Some(head) = run.head else {
+    // A head with a nonzero exit is still a failure, e.g. a truncated body (18).
+    let (Some(head), 0) = (run.head, run.exit) else {
         bail!(
             "{method} {url} failed: {}",
             String::from_utf8_lossy(&run.stderr).trim()
@@ -300,5 +304,14 @@ mod tests {
         ));
         assert_eq!(decode("AQ=="), None);
         assert_eq!(decode("AR"), None); // Noncanonical trailing bits.
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn scratch_is_private() {
+        use std::os::unix::fs::PermissionsExt;
+        let scratch = Scratch::new().unwrap();
+        let mode = fs::metadata(scratch.0.path()).unwrap().permissions().mode();
+        assert_eq!(mode & 0o777, 0o700);
     }
 }

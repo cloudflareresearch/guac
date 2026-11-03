@@ -1,6 +1,8 @@
 #![no_main]
 
-use guac::http::{Authorization, Challenge, CredentialField};
+use guac::http::{
+    Authorization, Challenge, CredentialField, ENDORSEMENT_RESPONSE, check_content_type,
+};
 use libfuzzer_sys::fuzz_target;
 
 // Header field values reach these parsers unauthenticated. What parses must
@@ -17,6 +19,8 @@ fuzz_target!(|bytes: &[u8]| {
             Some(Some(authorization))
         );
     }
+
+    let _ = check_content_type(field, ENDORSEMENT_RESPONSE);
 
     for challenge in Challenge::parse([field]) {
         let printed = challenge.to_string();

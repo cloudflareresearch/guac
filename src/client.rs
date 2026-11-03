@@ -376,6 +376,22 @@ impl PendingIssuance {
         })
     }
 
+    /// Whether `request` is the one that started this issuance: same Moderator
+    /// key, context and issuance commitment `K`.
+    #[cfg(feature = "browser")]
+    pub(crate) fn binds(&self, request: &CredentialRequest) -> bool {
+        // State is `k || r || K`, the request message `K || pok`.
+        const STATE: usize = <act::ClientIssuanceState>::LENGTH;
+        const MESSAGE: usize = <act::IssueRequestMessage>::LENGTH;
+        const ELEMENT: usize = 3 * STATE - 2 * MESSAGE;
+        let mut prefix = vec![self.config.key_id[31]];
+        put_vector(&mut prefix, &self.config.context);
+        let state = self.state.to_bytes();
+        request.issuance.len() == prefix.len() + MESSAGE
+            && request.issuance.starts_with(&prefix)
+            && request.issuance[prefix.len()..][..ELEMENT] == state[STATE - ELEMENT..]
+    }
+
     pub fn to_storage_bytes(&self) -> Zeroizing<Vec<u8>> {
         secret_envelope(4, self.config.fingerprint(), &self.state.to_bytes())
     }

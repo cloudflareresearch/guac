@@ -92,6 +92,13 @@ for (const test of cases) {
       }
     });
     assert.ok(anchor);
+    // A rejected response leaves the grant usable.
+    const configuration = new guac.AnchorConfig(bytes(anchor.public_key), bytes(anchor.epoch));
+    const grant = guac.startGrant(configuration, 1);
+    assert.throws(() => grant.advance(new Uint8Array(), 'text/plain'), { code: 'mismatch' });
+    assert.ok(grant.toStorageBytes().length);
+    grant.free();
+    configuration.free();
     assert.equal(hex(endorsement.toStorageBytes()), test.endorsement_storage);
   }
   const redemption = test.redemption_challenge;
@@ -104,6 +111,8 @@ for (const test of cases) {
   assert.match(request.authorization, /^Mole redeem-000[12]="[\w-]*", credential-request-0001="[\w-]+"$/);
   const retry = guac.PendingIssuance.fromStorageBytes(request.toStorageBytes(), request.authorization, config);
   assert.equal(retry.authorization, request.authorization);
+  assert.throws(() => guac.PendingIssuance.fromStorageBytes(request.toStorageBytes(), test.issuance_request, config),
+    { code: 'mismatch' });
   retry.free();
   request.free();
   if (endorsement) assert.throws(() => endorsement.toStorageBytes());

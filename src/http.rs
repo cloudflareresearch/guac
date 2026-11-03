@@ -354,22 +354,64 @@ impl fmt::Display for CredentialField {
 /// `ENDORSEMENT_RESPONSE`, including its required `type` parameter.
 pub fn check_content_type(value: &str, expected: &str) -> Result<(), Error> {
     let essence = expected.split(';').next().unwrap_or(expected);
-    let mut parts = value.split(';');
-    if !parts
-        .next()
-        .unwrap_or("")
-        .trim()
-        .eq_ignore_ascii_case(essence)
-    {
+    let (media, mut rest) = value.split_at(value.find(';').unwrap_or(value.len()));
+    if !media.trim().eq_ignore_ascii_case(essence) {
         return Err(Error::Mismatch);
     }
-    let types: Vec<&str> = parts
-        .filter_map(|part| part.split_once('='))
-        .filter(|(name, _)| name.trim().eq_ignore_ascii_case("type"))
-        .map(|(_, value)| value.trim().trim_matches('"'))
-        .collect();
-    match types.as_slice() {
-        [kind] if kind.eq_ignore_ascii_case("0002") => Ok(()),
+    let mut kind = None;
+    // RFC 9110 Section 5.6.6: `*( OWS ";" OWS [ token "=" ( token / quoted-string ) ] )`.
+    while let Some(tail) = rest.strip_prefix(';') {
+        rest = tail.trim_start_matches([' ', '\t']);
+        if rest.is_empty() || rest.starts_with(';') {
+            continue;
+        }
+        let (name, tail) = rest.split_once('=').ok_or(Error::Malformed)?;
+        let (value, tail) = match tail.strip_prefix('"') {
+            Some(quoted) => quoted_string(quoted)?,
+            None => {
+                let end = tail.find([';', ' ', '\t']).unwrap_or(tail.len());
+                let (value, tail) = tail.split_at(end);
+                if !is_token(value) {
+                    return Err(Error::Malformed);
+                }
+                (value, tail)
+            }
+        };
+        if !is_token(name) {
+            return Err(Error::Malformed);
+        }
+        if name.eq_ignore_ascii_case("type") && kind.replace(value).is_some() {
+            return Err(Error::Mismatch);
+        }
+        rest = tail.trim_start_matches([' ', '\t']);
+    }
+    if !rest.is_empty() {
+        return Err(Error::Malformed);
+    }
+    match kind {
+        Some(kind) if kind.eq_ignore_ascii_case("0002") => Ok(()),
         _ => Err(Error::Mismatch),
     }
+}
+
+/// Splits `content"rest` after an opening quote; escapes stay in `content`.
+fn quoted_string(value: &str) -> Result<(&str, &str), Error> {
+    let mut chars = value.char_indices();
+    while let Some((i, c)) = chars.next() {
+        match c {
+            '"' => return Ok((&value[..i], &value[i + 1..])),
+            '\\' => {
+                chars.next().ok_or(Error::Malformed)?;
+            }
+            _ => {}
+        }
+    }
+    Err(Error::Malformed)
+}
+
+fn is_token(value: &str) -> bool {
+    !value.is_empty()
+        && value
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b"!#$%&'*+-.^_`|~".contains(&b))
 }
