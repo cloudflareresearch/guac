@@ -5,10 +5,17 @@
 //! Grant bodies are bytes with `ENDORSEMENT_REQUEST`/`ENDORSEMENT_RESPONSE`
 //! media types.
 //!
-//! Errors are `Error` objects with a stable string `code`: the `crate::Error`
-//! variant in lower case (`amount`, `malformed`, `mismatch`, …), `consumed`
-//! for a handle whose state was already used, `state` for a grant step
-//! called in the wrong phase, or `missing` for an absent `Mole-Credential`.
+//! Errors are `Error` objects whose `code` is an `ErrorCode`: the
+//! `crate::Error` variant in lower case (`amount`, `malformed`, `mismatch`, …),
+//! `consumed` for a handle whose state was already used, or `missing` for an
+//! absent `Mole-Credential`.
+//!
+//! Handles keep secret state in Wasm memory: `free()` or `using` wipes it
+//! deterministically, garbage collection only eventually. `toStorageBytes`
+//! returns a secret copy that the host must store and wipe itself. Restoring a
+//! snapshot whose state was already used rolls back single use, and the server
+//! rejects the reuse; keeping one state live in two tabs or workers is the
+//! same mistake. Ownership across contexts is the host's.
 //!
 //! Every call is synchronous and CPU-bound (a presentation takes tens of
 //! milliseconds): run the module in a Web Worker and reuse configurations.
@@ -22,6 +29,17 @@ use crate::{
     http::{self, Authorization, Challenge, CredentialField},
     protocol,
 };
+
+#[wasm_bindgen(typescript_custom_section)]
+const TYPES: &str = r#"
+/** `Error.code` values; keep in step with `code` in browser.rs. */
+export type ErrorCode = 'configuration' | 'malformed' | 'unsupported' | 'mismatch'
+  | 'challenge' | 'replay' | 'retired' | 'amount' | 'session' | 'storage' | 'entropy'
+  | 'endorsement' | 'credential' | 'consumed' | 'missing';
+/** On `continue`, send the grant's updated `request` and store its new state. */
+export type GrantOutcome = { kind: 'continue' } | { kind: 'complete'; endorsements: Endorsement[] };
+export type PresentationOutcome = { kind: 'replaced'; credential: Credential } | { kind: 'consumed' };
+"#;
 
 fn code(error: &Error) -> &'static str {
     match error {
@@ -52,6 +70,16 @@ impl From<Error> for JsValue {
     fn from(error: Error) -> Self {
         js_error(&error.to_string(), code(&error))
     }
+}
+
+fn outcome(kind: &str, value: Option<(&str, JsValue)>) -> JsValue {
+    let object = js_sys::Object::new();
+    // Setting data properties on a fresh plain object cannot fail.
+    let _ = js_sys::Reflect::set(&object, &"kind".into(), &kind.into());
+    if let Some((key, value)) = value {
+        let _ = js_sys::Reflect::set(&object, &key.into(), &value);
+    }
+    object.into()
 }
 
 fn consumed(what: &str) -> JsValue {
@@ -208,47 +236,28 @@ impl PendingGrant {
         self.request.to_bytes()
     }
 
-    /// A wrong `Content-Type` or malformed body retains this continuation; an
-    /// invalid response consumes it.
-    pub fn advance(&mut self, response: &[u8], content_type: &str) -> Result<GrantStep, JsValue> {
+    /// A wrong `Content-Type` or malformed body retains this grant; an invalid
+    /// response consumes it. `continue` updates this grant in place; `complete`
+    /// consumes it.
+    #[wasm_bindgen(unchecked_return_type = "GrantOutcome")]
+    pub fn advance(&mut self, response: &[u8], content_type: &str) -> Result<JsValue, JsValue> {
         http::check_content_type(content_type, http::ENDORSEMENT_RESPONSE)?;
         let response = protocol::EndorsementResponse::from_bytes(response)?;
         let pending = self.pending.take().ok_or_else(|| consumed("grant"))?;
-        Ok(GrantStep(pending.advance(&response)?))
-    }
-}
-
-#[wasm_bindgen]
-pub struct GrantStep(crate::GrantStep);
-
-#[wasm_bindgen]
-impl GrantStep {
-    #[wasm_bindgen(getter, js_name = isComplete)]
-    pub fn is_complete(&self) -> bool {
-        matches!(self.0, crate::GrantStep::Complete(_))
-    }
-
-    #[wasm_bindgen(js_name = continueGrant)]
-    pub fn continue_grant(self) -> Result<PendingGrant, JsValue> {
-        match self.0 {
-            crate::GrantStep::Continue { request, pending } => Ok(PendingGrant {
-                request,
-                pending: Some(pending),
-            }),
-            crate::GrantStep::Complete(_) => Err(js_error("grant already complete", "state")),
-        }
-    }
-
-    pub fn finish(self) -> Result<Vec<Endorsement>, JsValue> {
-        match self.0 {
-            crate::GrantStep::Complete(endorsements) => Ok(endorsements
-                .into_iter()
-                .map(|endorsement| Endorsement(Some(endorsement)))
-                .collect()),
-            crate::GrantStep::Continue { .. } => {
-                Err(js_error("grant needs another exchange", "state"))
+        Ok(match pending.advance(&response)? {
+            crate::GrantStep::Continue { request, pending } => {
+                self.request = request;
+                self.pending = Some(pending);
+                outcome("continue", None)
             }
-        }
+            crate::GrantStep::Complete(endorsements) => {
+                let endorsements: js_sys::Array = endorsements
+                    .into_iter()
+                    .map(|endorsement| JsValue::from(Endorsement(Some(endorsement))))
+                    .collect();
+                outcome("complete", Some(("endorsements", endorsements.into())))
+            }
+        })
     }
 }
 
@@ -475,12 +484,10 @@ impl PendingPresentation {
     }
 
     /// `mole_credential` is the response's `Mole-Credential` field, whatever
-    /// its status. Returns a replacement, or undefined for explicit
-    /// consumption. Failure, including a missing field, retains pending state.
-    pub fn finish(
-        &mut self,
-        mole_credential: Option<String>,
-    ) -> Result<Option<Credential>, JsValue> {
+    /// its status. Success consumes this pending state; failure, including a
+    /// missing field, retains it.
+    #[wasm_bindgen(unchecked_return_type = "PresentationOutcome")]
+    pub fn finish(&mut self, mole_credential: Option<String>) -> Result<JsValue, JsValue> {
         let CredentialField::Update(update) = credential_field(mole_credential)? else {
             return Err(Error::Malformed.into());
         };
@@ -489,10 +496,11 @@ impl PendingPresentation {
             .take()
             .ok_or_else(|| consumed("presentation"))?;
         match pending.finish(&update) {
-            Ok(crate::CredentialOutcome::Replaced(credential)) => {
-                Ok(Some(Credential(Some(credential))))
-            }
-            Ok(crate::CredentialOutcome::Consumed) => Ok(None),
+            Ok(crate::CredentialOutcome::Replaced(credential)) => Ok(outcome(
+                "replaced",
+                Some(("credential", Credential(Some(credential)).into())),
+            )),
+            Ok(crate::CredentialOutcome::Consumed) => Ok(outcome("consumed", None)),
             Err(error) => {
                 self.pending = Some(*error.pending);
                 Err(error.error.into())

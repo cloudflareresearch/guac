@@ -37,6 +37,8 @@ pub struct Transcript {
     pub name: String,
     pub anchors: Vec<AnchorVector>,
     pub grant_exchanges: Vec<(String, String)>,
+    /// Pending grant storage after the first exchange; answers the second.
+    pub grant_state: Option<String>,
     pub endorsement_storage: Option<String>,
     pub moderator_secret: String,
     pub moderator_public: String,
@@ -88,6 +90,7 @@ pub fn capture(
         60,
     )?;
     let mut exchanges = Vec::new();
+    let mut grant_state = None;
     let endorsement = if let Some(index) = anchor_index {
         let anchor = anchors.get(index).ok_or("invalid Anchor index")?;
         let (request, pending) = client.start_grant(anchor.configuration(), NonZeroU16::MIN);
@@ -99,6 +102,7 @@ pub fn capture(
         let GrantStep::Continue { request, pending } = pending.advance(&response)? else {
             return Err("grant ended after the commitment".into());
         };
+        grant_state = Some(hex::encode(pending.to_storage_bytes()));
         let response = anchor.grant(&store, &request, 100, 130, NonZeroU16::MIN)?;
         exchanges.push((
             hex::encode(request.to_bytes()),
@@ -159,6 +163,7 @@ pub fn capture(
             Vec::new()
         },
         grant_exchanges: exchanges,
+        grant_state,
         endorsement_storage,
         moderator_secret: hex::encode(moderator.to_secret_bytes()),
         moderator_public: hex::encode(moderator.configuration().public_key()),
