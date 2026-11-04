@@ -2,26 +2,26 @@
 // Cargo cannot install emcc (a Python/Clang/Binaryen toolchain), so this uses
 // emcc from PATH when present, else $EMSDK, else a per-user cached install.
 //
-//   node scripts/emsdk.mjs            # install if missing, print shell exports
-//   eval "$(node scripts/emsdk.mjs)"  # then cargo --target wasm32-unknown-emscripten
+//   node scripts/emsdk.ts             # install if missing, print shell exports
+//   eval "$(node scripts/emsdk.ts)"   # then cargo --target wasm32-unknown-emscripten
 //
 // shortcut: POSIX only (./emsdk, ':' PATH separator); add emsdk.bat for Windows.
 import { existsSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
-import { spawnSync } from 'node:child_process';
+import { spawnSync, type SpawnSyncOptions } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
 export const VERSION = '6.0.10';
 
-function run(command, args, options = {}) {
+function run(command: string, args: string[], options: SpawnSyncOptions = {}): void {
   const result = spawnSync(command, args, { stdio: ['ignore', 2, 2], ...options });
   if (result.error) throw result.error;
   if (result.status !== 0) throw new Error(`${command} ${args.join(' ')} failed (${result.status})`);
 }
 
 /** Environment in which `emcc` resolves; installs the pinned SDK on first use. */
-export function emscriptenEnv(env = process.env) {
+export function emscriptenEnv(env: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
   if (spawnSync('emcc', ['--version'], { stdio: 'ignore', env }).status === 0) return env;
   const cache = env.XDG_CACHE_HOME || join(homedir(), '.cache');
   const root = env.EMSDK || join(cache, 'guac', `emsdk-${VERSION}`);

@@ -12,12 +12,17 @@ users pin this crate by Git revision.
   `http.rs` HTTP carriage, `browser.rs` wasm-bindgen API (`browser` feature).
 - `cli/`: `guac-cli` (binary `guac`). `cli/tests/flow.rs` drives real curl
   against an in-process Anchor and Moderator.
-- `tests/`: transcripts, encodings, grant storage, epoch rotation; `tests/browser.cjs` checks the
-  Wasm bindings in Node. `tests/vectors/transcripts.json` is checked in.
+- `tests/`: transcripts, encodings, grant storage, epoch rotation; `tests/browser.ts` checks the
+  Wasm bindings (wasm-pack `web` target) in Node, including that no client-only
+  secret is left in Wasm memory. `tests/vectors/transcripts.json` is checked in.
   `tests/credential_lifecycle.rs` exercises generated end-to-end flows with proptest.
 - `fuzz/`: standalone cargo-fuzz targets for grants and HTTP fields; run instructions in `fuzz/README.md`.
 - `examples/`: `flow` (full exchange), `generate_vectors`.
-- `scripts/emsdk.mjs`: pinned Emscripten for `wasm32-unknown-emscripten`.
+- `scripts/emsdk.ts`: pinned Emscripten for `wasm32-unknown-emscripten`.
+- `tests/package.json` / `tests/tsconfig.json`: dev-only TypeScript type
+  checking (and zod for the vector schema) for `tests/` and `scripts/`;
+  nothing is published to npm. Node runs the `.ts` files directly; write
+  erasable-only TypeScript (no enums, namespaces or parameter properties).
 
 ## Commands
 
@@ -26,13 +31,16 @@ cargo fmt --all --check
 cargo clippy --workspace --all-features --all-targets --locked -- -D warnings
 cargo test --workspace --locked
 cargo check --target wasm32-unknown-unknown --features browser --locked
-wasm-pack build --target nodejs --out-dir target/browser-node --features browser --locked
-node tests/browser.cjs
+wasm-pack build --target web --out-dir target/browser-web --features browser --locked
+npm ci --prefix tests && npm run --prefix tests typecheck   # after wasm-pack
+node tests/browser.ts
 cargo run --locked --example generate_vectors   # only when vectors must change
 ```
 
 CI (`.github/workflows/ci.yml`) runs the same on pushes to `main` and on pull
-requests.
+requests. Dependabot (`.github/dependabot.yml`) opens weekly grouped updates for
+Cargo (root and `fuzz/`), npm and GitHub Actions; `act-rs` / `ihat-rs` bumps come
+separately because they need regenerated vectors.
 
 ## Constraints
 

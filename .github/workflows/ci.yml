@@ -37,14 +37,19 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version: 26
+          cache: npm
+          cache-dependency-path: tests/package-lock.json
+      - run: npm ci --prefix tests
       - uses: Swatinem/rust-cache@v2
       - name: Install wasm-pack
         run: |
           curl -fsSL https://github.com/rustwasm/wasm-pack/releases/download/v0.15.1/wasm-pack-v0.15.1-x86_64-unknown-linux-musl.tar.gz \
             | tar -xz -C "$HOME/.cargo/bin" --strip-components=1 --wildcards '*/wasm-pack'
       - run: cargo check --locked --target wasm32-unknown-unknown --features browser
-      - run: wasm-pack build --target nodejs --out-dir target/browser-node --features browser --locked
-      - run: node tests/browser.cjs
+      - run: wasm-pack build --target web --out-dir target/browser-web --features browser --locked
+      # Types come from the wasm-pack output, so check after building it.
+      - run: npm run --prefix tests typecheck
+      - run: node tests/browser.ts
 
   # Standalone fuzz crate is outside the workspace; keep it compiling.
   fuzz:

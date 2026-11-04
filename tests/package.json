@@ -1,0 +1,14 @@
+{
+  "name": "guac-dev",
+  "private": true,
+  "description": "Type checking for the Node test and dev scripts; the library is Rust.",
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc"
+  },
+  "devDependencies": {
+    "@types/node": "26.6.5",
+    "typescript": "7.0.2",
+    "zod": "4.6.7"
+  }
+}

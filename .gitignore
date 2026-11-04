@@ -2,3 +2,4 @@
 /fuzz/target/
 /fuzz/artifacts/
 /fuzz/corpus/
+/tests/node_modules/

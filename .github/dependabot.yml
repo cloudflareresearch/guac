@@ -1,0 +1,37 @@
+version: 2
+updates:
+  # fuzz/ is a standalone workspace with its own Cargo.lock.
+  - package-ecosystem: cargo
+    directories:
+      - /
+      - /fuzz
+    schedule:
+      interval: weekly
+    groups:
+      cargo:
+        patterns:
+          - "*"
+        # Bumping the protocol crypto revisions is its own change: it needs
+        # regenerated vectors, so keep those PRs separate.
+        exclude-patterns:
+          - act-rs
+          - ihat-rs
+
+  # TypeScript tooling for tests/browser.ts and scripts/; dev-only.
+  - package-ecosystem: npm
+    directory: /tests
+    schedule:
+      interval: weekly
+    groups:
+      npm:
+        patterns:
+          - "*"
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      github-actions:
+        patterns:
+          - "*"
