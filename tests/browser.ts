@@ -15,6 +15,8 @@ const Case = z.object({
   credential_context: hex,
   retention_seconds: z.string().regex(/^\d+$/),
   anchors: z.array(z.object({ public_key: hex, epoch: hex })),
+  grant_exchanges: z.array(z.tuple([hex, hex])),
+  grant_state: hex.nullable(),
   issuance_state: hex,
   issuance_state_raw: hex,
   issuance_request: z.string(),
@@ -35,6 +37,7 @@ const corpus = z.object({ cases: z.array(Case) })
 const b64 = (hex: string): string => Uint8Array.fromHex(hex).toBase64({ alphabet: 'base64url', omitPadding: true });
 const present = (hex: string): string => `Mole challenge-0001="${b64(hex)}"`;
 const update = (hex: string): string => `update-0001="${b64(hex)}"`;
+const responseType = 'application/mole-endorsement-response; type=0002';
 
 // Native transcripts own crypto combinations; Wasm owns JS value/ownership mapping.
 const cases = [corpus.cases.find(test => test.anchors.length && test.expected_balance !== null),
@@ -94,13 +97,13 @@ for (const test of cases) {
     assert.throws(() => pending.finish(update(invalid.toHex())));
     assert.equal(pending.toStorageBytes().toHex(), test.pending_presentation);
   }
-  const replacement = pending.finish(update(test.update));
+  const outcome = pending.finish(update(test.update));
   if (test.expected_balance === null) {
-    assert.equal(replacement, undefined);
+    assert.deepEqual(outcome, { kind: 'consumed' });
   } else {
-    assert.ok(replacement);
-    assert.equal(replacement.balance, BigInt(test.expected_balance));
-    replacement.free();
+    assert.ok(outcome.kind === 'replaced');
+    assert.equal(outcome.credential.balance, BigInt(test.expected_balance));
+    outcome.credential.free();
   }
   assert.throws(() => pending.finish(update(test.update)), { code: 'consumed' });
   assert.throws(() => pending.toStorageBytes());
@@ -122,12 +125,24 @@ for (const test of cases) {
       }
     });
     assert.ok(anchor);
-    // A rejected response leaves the grant usable.
     const configuration = new guac.AnchorConfig(Uint8Array.fromHex(anchor.public_key), Uint8Array.fromHex(anchor.epoch));
+    const [[firstRequest, firstResponse], [secondRequest, secondResponse]] = test.grant_exchanges;
     const grant = guac.startGrant(configuration, 1);
+    assert.equal(grant.request.toHex(), firstRequest);
     assert.throws(() => grant.advance(new Uint8Array(), 'text/plain'), { code: 'mismatch' });
-    assert.ok(grant.toStorageBytes().length);
+    assert.deepEqual(grant.advance(Uint8Array.fromHex(firstResponse), responseType), { kind: 'continue' });
+    assert.equal(grant.request.length, secondRequest.length / 2); // Fresh challenges, so only the size is known.
     grant.free();
+    assert.ok(test.grant_state !== null);
+    const resumed = guac.PendingGrant.fromStorageBytes(Uint8Array.fromHex(test.grant_state),
+      Uint8Array.fromHex(secondRequest), configuration);
+    const done = resumed.advance(Uint8Array.fromHex(secondResponse), responseType);
+    assert.ok(done.kind === 'complete');
+    assert.deepEqual(done.endorsements.map(endorsement => endorsement.toStorageBytes().toHex()),
+      [test.endorsement_storage]);
+    assert.throws(() => resumed.toStorageBytes(), { code: 'consumed' });
+    done.endorsements.forEach(endorsement => endorsement.free());
+    resumed.free();
     configuration.free();
     assert.ok(found);
     assert.equal(found.toStorageBytes().toHex(), test.endorsement_storage);
