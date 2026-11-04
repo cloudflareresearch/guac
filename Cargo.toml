@@ -22,7 +22,7 @@ browser = ["act/wasm_js", "ec_ihat/wasm_js", "getrandom/wasm_js", "dep:wasm-bind
 [dependencies]
 act = { package = "act-rs", git = "https://github.com/Moderation-of-unLinkable-Endorsements/act-rs", rev = "f1bd64b90408677662bb9f96915d8dc0e58e1ad6" }
 ec_ihat = { package = "ihat-rs", git = "https://github.com/Moderation-of-unLinkable-Endorsements/ihat-rs", rev = "ed756147ac9a1cc530d718e749c0fae8090fda7c" }
-base64 = "0.22"
+base64 = "0.23"
 getrandom = "0.4"
 http-auth = { version = "0.1.10", default-features = false }
 sha2 = "0.11"
