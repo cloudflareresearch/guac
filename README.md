@@ -90,7 +90,7 @@ Install from the checkout with `cargo install --path cli --locked`. With an Anch
 ```sh
 guac anchor add my-anchor https://anchor.example/config
 guac moderator add my-site https://moderator.example/config
-guac endorsement request --anchor my-anchor --count 3
+guac endorsement request --anchor my-anchor --moderator my-site --count 3
 # Use one of the endorsement IDs printed above.
 guac credential issue --moderator my-site --endorsement <endorsement-id> --as my-site-credential
 guac curl --credential my-site-credential -- -X POST https://api.example/counter

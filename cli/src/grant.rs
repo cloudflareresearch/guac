@@ -29,6 +29,7 @@ use crate::{
 const APPROVAL_TIMEOUT: Duration = Duration::from_secs(300);
 
 pub struct Options {
+    pub scope: guac::RedemptionScope,
     pub open_browser: bool,
     pub interactive: bool,
     pub count: NonZeroU16,
@@ -53,7 +54,7 @@ pub fn request(
         Some(uri) => Some(approve(uri, options, out)?),
         None => None,
     };
-    let (request, pending) = Client.start_grant(&config, options.count);
+    let (request, pending) = Client.start_grant(&config, options.count, &options.scope);
     let mut headers = vec![format!("Content-Type: {}", guac::http::ENDORSEMENT_REQUEST)];
     if let Some(a) = &approval {
         headers.push(format!(

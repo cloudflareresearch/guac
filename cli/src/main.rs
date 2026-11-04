@@ -34,7 +34,7 @@ const EXAMPLES: &str = "\
 Examples:
   guac anchor add work https://anchor.example/config
   guac moderator add api https://moderator.example/config
-  guac endorsement request --anchor work
+  guac endorsement request --moderator api --anchor work
   guac credential issue --moderator api --endorsement end_7f3a91c2d4e5 --as work-api
   guac curl --credential work-api -- -X POST https://api.example/counter
   guac status
@@ -122,6 +122,9 @@ enum EndorsementCommand {
     Request {
         #[arg(long)]
         anchor: String,
+        /// Registered Moderator this endorsement may be redeemed with.
+        #[arg(long)]
+        moderator: String,
         /// Print the approval URL instead of opening a browser.
         #[arg(long)]
         no_browser: bool,
@@ -437,13 +440,16 @@ fn run(cli: Cli, out: &Output) -> Result<ExitCode> {
         Command::Endorsement(command) => match command {
             EndorsementCommand::Request {
                 anchor,
+                moderator,
                 no_browser,
                 count,
             } => {
                 let saved: AnchorDirectory = store.remote(Kind::Anchor, &anchor)?;
                 let directory = remote::fetch_anchor(&saved.url, saved.access)?;
                 store.put_remote(Kind::Anchor, &anchor, &directory, true)?;
+                let destination: ModeratorDirectory = store.remote(Kind::Moderator, &moderator)?;
                 let options = grant::Options {
+                    scope: destination.config()?.redemption_scope()?,
                     open_browser: !no_browser,
                     interactive: !cli.no_input,
                     count,
@@ -452,7 +458,7 @@ fn run(cli: Cli, out: &Output) -> Result<ExitCode> {
                 out.data(json!({ "ids": ids, "anchor": anchor }), || ids.join("\n"));
                 if let Some(id) = ids.first() {
                     out.progress(&format!(
-                        "hint: run `guac credential issue --moderator <name> --endorsement {id}`"
+                        "hint: run `guac credential issue --moderator {moderator} --endorsement {id}`"
                     ));
                 }
             }

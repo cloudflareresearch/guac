@@ -330,7 +330,7 @@ fn rand_u64() -> u64 {
 
 fn serve(approval: bool) -> Arc<Server> {
     let listener = TcpListener::bind("127.0.0.1:0").unwrap();
-    let origin = format!("http://127.0.0.1:{}", listener.local_addr().unwrap().port());
+    let origin = format!("http://localhost:{}", listener.local_addr().unwrap().port());
     let anchor = Anchor::generate(b"epoch-1".to_vec()).unwrap();
     let set = AnchorSet::new(&[anchor.configuration().clone()]).unwrap();
     let moderator = Moderator::generate(
@@ -433,7 +433,15 @@ fn balance(home: &Path, name: &str) -> u64 {
 fn endorse(home: &Path, server: &Server) -> String {
     let mut child = guac(
         home,
-        &["endorsement", "request", "--anchor", "a", "--no-browser"],
+        &[
+            "endorsement",
+            "request",
+            "--anchor",
+            "a",
+            "--moderator",
+            "m",
+            "--no-browser",
+        ],
     )
     .stdout(Stdio::piped())
     .stderr(Stdio::piped())
@@ -724,9 +732,26 @@ fn approval_needs_input() {
             &format!("{}/anchor/config", server.origin),
         ],
     );
+    ok(
+        home.path(),
+        &[
+            "moderator",
+            "add",
+            "m",
+            &format!("{}/moderator/config", server.origin),
+        ],
+    );
     let output = run(
         home.path(),
-        &["--no-input", "endorsement", "request", "--anchor", "a"],
+        &[
+            "--no-input",
+            "endorsement",
+            "request",
+            "--anchor",
+            "a",
+            "--moderator",
+            "m",
+        ],
     );
     assert!(!output.status.success());
     assert!(String::from_utf8_lossy(&output.stderr).contains("requires approval in a browser"));
@@ -744,6 +769,15 @@ fn plain_anchor_and_removal() {
             "add",
             "a",
             &format!("{}/anchor/config", server.origin),
+        ],
+    );
+    ok(
+        home,
+        &[
+            "moderator",
+            "add",
+            "m",
+            &format!("{}/moderator/config", server.origin),
         ],
     );
     let id = endorse(home, &server);

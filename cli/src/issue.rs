@@ -27,7 +27,7 @@ pub fn issue(
         None => {
             if !directory.endorsements.contains(&Accepted::NoEndorsement) {
                 bail!(
-                    "Moderator `{moderator}` requires an Anchor endorsement\nhint: run `guac endorsement request --anchor <name>`, then pass --endorsement"
+                    "Moderator `{moderator}` requires an Anchor endorsement\nhint: run `guac endorsement request --anchor <name> --moderator {moderator}`, then pass --endorsement"
                 );
             }
             (Accepted::NoEndorsement, IssuanceInput::WithoutEndorsement)
