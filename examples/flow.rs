@@ -2,7 +2,7 @@ use std::num::NonZeroU16;
 
 use guac::{
     Anchor, AnchorSet, Client, CredentialOutcome, EndorsementPolicy, GrantStep, IssuanceInput,
-    Moderator, PresentationOutcome, UpdatePolicy, storage::MemoryStore,
+    Moderator, PresentationOutcome, RedemptionScope, UpdatePolicy, storage::MemoryStore,
 };
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -38,7 +38,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // EndorsementFinalization        |
     //     |                          |
     // `store` also holds the Anchor's grant session between the exchanges.
-    let (request, pending) = client.start_grant(anchor.configuration(), NonZeroU16::MIN);
+    let scope = RedemptionScope::for_moderator_domain("moderator.example")?;
+    let (request, pending) = client.start_grant(anchor.configuration(), NonZeroU16::MIN, &scope);
     let response = anchor.grant(&store, &request, 0, 30, NonZeroU16::MIN)?;
     let GrantStep::Continue { request, pending } = pending.advance(&response)? else {
         return Err("grant ended after the commitment".into());

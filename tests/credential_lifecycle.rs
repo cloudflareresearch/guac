@@ -54,7 +54,7 @@ proptest! {
             IssuanceInput::WithoutEndorsement
         } else {
             let anchor = &anchors[anchor_index % anchors.len()];
-            let (request, pending) = Client.start_grant(anchor.configuration(), NonZeroU16::MIN);
+            let (request, pending) = Client.start_grant(anchor.configuration(), NonZeroU16::MIN, &guac::RedemptionScope::for_moderator_domain("moderator.example").expect("valid domain"));
             let response = anchor.grant(&store, &request, now, now + 30, NonZeroU16::MIN).unwrap();
             let GrantStep::Continue { request, pending } = pending.advance(&response).unwrap() else {
                 panic!("expected grant challenge");

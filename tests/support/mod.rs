@@ -90,7 +90,12 @@ pub fn capture(
     let mut exchanges = Vec::new();
     let endorsement = if let Some(index) = anchor_index {
         let anchor = anchors.get(index).ok_or("invalid Anchor index")?;
-        let (request, pending) = client.start_grant(anchor.configuration(), NonZeroU16::MIN);
+        let (request, pending) = client.start_grant(
+            anchor.configuration(),
+            NonZeroU16::MIN,
+            &guac::RedemptionScope::for_moderator_domain("moderator.example")
+                .expect("valid domain"),
+        );
         let response = anchor.grant(&store, &request, 100, 130, NonZeroU16::MIN)?;
         exchanges.push((
             hex::encode(request.to_bytes()),

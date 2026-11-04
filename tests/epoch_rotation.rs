@@ -9,7 +9,11 @@ const ENDPOINT: &str = "https://moderator.example/issue";
 
 fn endorse(anchor: &Anchor) -> Endorsement {
     let store = MemoryStore::default();
-    let (request, pending) = Client.start_grant(anchor.configuration(), NonZeroU16::MIN);
+    let (request, pending) = Client.start_grant(
+        anchor.configuration(),
+        NonZeroU16::MIN,
+        &guac::RedemptionScope::for_moderator_domain("moderator.example").expect("valid domain"),
+    );
     let response = anchor
         .grant(&store, &request, 0, 30, NonZeroU16::MIN)
         .unwrap();

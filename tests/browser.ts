@@ -124,7 +124,7 @@ for (const test of cases) {
     assert.ok(anchor);
     // A rejected response leaves the grant usable.
     const configuration = new guac.AnchorConfig(Uint8Array.fromHex(anchor.public_key), Uint8Array.fromHex(anchor.epoch));
-    const grant = guac.startGrant(configuration, 1);
+    const grant = guac.startGrant(configuration, 1, new URL(test.endpoint).hostname);
     assert.throws(() => grant.advance(new Uint8Array(), 'text/plain'), { code: 'mismatch' });
     assert.ok(grant.toStorageBytes().length);
     grant.free();

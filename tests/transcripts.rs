@@ -634,6 +634,70 @@ fn rejected_request_returns_the_endorsement() {
 }
 
 #[test]
+fn endorsement_scope_survives_storage_and_rejects_another_domain() {
+    let case = &corpus().cases[0];
+    let (moderator, store) = setup(case);
+    let anchor = &case.anchors[0];
+    let config = AnchorConfig::new(&array(&anchor.public_key), bytes(&anchor.epoch)).unwrap();
+    let stored = bytes(case.endorsement_storage.as_ref().unwrap());
+    let endorsement = Endorsement::from_storage_bytes(&stored, &config).unwrap();
+    assert_eq!(endorsement.scope().moderator_domain(), "moderator.example");
+    let anchors = case
+        .anchors
+        .iter()
+        .map(|anchor| AnchorConfig::new(&array(&anchor.public_key), bytes(&anchor.epoch)).unwrap())
+        .collect::<Vec<_>>();
+    let other = Moderator::from_secret(
+        &moderator.to_secret_bytes(),
+        "https://different.example/",
+        4,
+        bytes(&case.credential_context),
+        EndorsementPolicy::Required(AnchorSet::new(&anchors).unwrap()),
+        60,
+    )
+    .unwrap();
+    let failure = Client
+        .request_credential(
+            IssuanceInput::Endorsement(endorsement),
+            other.configuration(),
+            &other.redemption_challenge(100).unwrap(),
+        )
+        .unwrap_err();
+    assert!(matches!(failure.error, Error::Mismatch));
+    let (request, _) = Client
+        .request_credential(
+            *failure.input,
+            moderator.configuration(),
+            &moderator.redemption_challenge(100).unwrap(),
+        )
+        .unwrap();
+    moderator.issue(&store, &request, 8, 100).unwrap();
+
+    let (forged, _) = Client
+        .request_credential(
+            IssuanceInput::Endorsement(Endorsement::from_storage_bytes(&stored, &config).unwrap()),
+            moderator.configuration(),
+            &other.redemption_challenge(100).unwrap(),
+        )
+        .unwrap();
+    assert!(matches!(
+        other.prepare_issuance(&forged, 8, 100),
+        Err(Error::Endorsement(_))
+    ));
+
+    let mut tampered = stored;
+    let offset = tampered
+        .windows(17)
+        .position(|bytes| bytes == b"moderator.example")
+        .unwrap();
+    tampered[offset..offset + 17].copy_from_slice(b"different.example");
+    assert!(matches!(
+        Endorsement::from_storage_bytes(&tampered, &config),
+        Err(Error::Endorsement(_))
+    ));
+}
+
+#[test]
 fn endorsement_replay_is_rejected_even_under_a_fresh_challenge() {
     let case = &corpus().cases[0];
     let (moderator, store) = setup(case);

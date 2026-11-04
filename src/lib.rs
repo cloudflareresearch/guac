@@ -21,6 +21,6 @@ pub use client::{
     Client, Credential, CredentialOutcome, Endorsement, GrantStep, IssuanceInput, PendingGrant,
     PendingIssuance, PendingPresentation, PresentError, RequestError, UpdateError,
 };
-pub use config::{AnchorConfig, AnchorSet, EndorsementPolicy, ModeratorConfig};
+pub use config::{AnchorConfig, AnchorSet, EndorsementPolicy, ModeratorConfig, RedemptionScope};
 pub use error::Error;
 pub use moderator::{Acceptance, Issuance, Moderator, PresentationOutcome, UpdatePolicy};

@@ -3,8 +3,7 @@ use std::{fmt, num::NonZeroU16, sync::Arc};
 use zeroize::Zeroizing;
 
 use crate::{
-    AnchorConfig, EndorsementPolicy, Error, ModeratorConfig,
-    config::REDEMPTION_CONTEXT,
+    AnchorConfig, EndorsementPolicy, Error, ModeratorConfig, RedemptionScope,
     protocol::{
         ACT, CHALLENGE_LENGTH, COMMITMENT_LENGTH, CredentialChallenge, CredentialPresentation,
         CredentialRequest, CredentialResponse, CredentialUpdate, EC_IHAT, EndorsementRequest,
@@ -26,6 +25,7 @@ enum GrantPhase {
 #[must_use]
 pub struct PendingGrant {
     config: AnchorConfig,
+    scope: RedemptionScope,
     phase: GrantPhase,
 }
 
@@ -40,10 +40,11 @@ pub enum GrantStep {
     Complete(Vec<Endorsement>),
 }
 
-/// A single-use client secret bound to an Anchor key and issuance epoch.
+/// A single-use client secret bound to an Anchor key, issuance epoch and Moderator domain.
 #[must_use]
 pub struct Endorsement {
     config: AnchorConfig,
+    scope: RedemptionScope,
     token: Box<ec_ihat::Endorsement>,
 }
 
@@ -126,11 +127,12 @@ macro_rules! returned_error {
 returned_error!(UpdateError, PresentError, RequestError);
 
 impl Client {
-    /// Asks for up to `count` endorsements; the Anchor may grant fewer.
+    /// Asks for up to `count` endorsements bound to `scope`; the Anchor may grant fewer.
     pub fn start_grant(
         &self,
         configuration: &AnchorConfig,
         count: NonZeroU16,
+        scope: &RedemptionScope,
     ) -> (EndorsementRequest, PendingGrant) {
         (
             EndorsementRequest {
@@ -138,6 +140,7 @@ impl Client {
             },
             PendingGrant {
                 config: configuration.clone(),
+                scope: scope.clone(),
                 phase: GrantPhase::Commitments(count),
             },
         )
@@ -179,7 +182,9 @@ fn request(
     let redemption = match (input, &configuration.endorsements) {
         (IssuanceInput::WithoutEndorsement, EndorsementPolicy::NotRequired) => Vec::new(),
         (IssuanceInput::Endorsement(endorsement), EndorsementPolicy::Required(set)) => {
-            if endorsement.config.epoch != set.epoch {
+            if endorsement.scope != configuration.redemption_scope()?
+                || endorsement.config.epoch != set.epoch
+            {
                 return Err(Error::Mismatch);
             }
             let index = set
@@ -195,7 +200,7 @@ fn request(
                 index,
                 token,
                 &set.epoch,
-                REDEMPTION_CONTEXT,
+                &endorsement.scope.context(),
                 &challenge.digest(),
             )?
             .to_bytes()
@@ -252,6 +257,7 @@ impl PendingGrant {
     /// Secret local state. The host atomically stores this with the exact request.
     pub fn to_storage_bytes(&self) -> Zeroizing<Vec<u8>> {
         let mut payload = Zeroizing::new(Vec::new());
+        put_vector(&mut payload, self.scope.moderator_domain().as_bytes());
         match &self.phase {
             GrantPhase::Commitments(count) => {
                 payload.push(0);
@@ -272,12 +278,15 @@ impl PendingGrant {
                 }
             }
         }
-        secret_envelope(5, anchor_fingerprint(&self.config), &payload)
+        secret_envelope(7, anchor_fingerprint(&self.config), &payload)
     }
 
     /// Reads trusted local storage; restoration never grants permission to reuse state.
     pub fn from_storage_bytes(bytes: &[u8], configuration: &AnchorConfig) -> Result<Self, Error> {
-        let mut reader = Reader::trusted(read_secret(bytes, 5, anchor_fingerprint(configuration))?);
+        let mut reader = Reader::trusted(read_secret(bytes, 7, anchor_fingerprint(configuration))?);
+        let scope = RedemptionScope::for_moderator_domain(
+            std::str::from_utf8(reader.vector()?).map_err(|_| Error::Malformed)?,
+        )?;
         let phase = match reader.take(1)? {
             [0] => GrantPhase::Commitments(
                 NonZeroU16::new(u16::from_be_bytes(reader.array()?)).ok_or(Error::Malformed)?,
@@ -297,6 +306,7 @@ impl PendingGrant {
         reader.finish()?;
         Ok(Self {
             config: configuration.clone(),
+            scope,
             phase,
         })
     }
@@ -321,7 +331,7 @@ impl PendingGrant {
                     let (state, challenge) = ec_ihat::challenge(
                         &self.config.key,
                         &self.config.epoch,
-                        REDEMPTION_CONTEXT,
+                        &self.scope.context(),
                         &commitment,
                     )?;
                     challenges.extend_from_slice(&challenge.to_bytes());
@@ -333,6 +343,7 @@ impl PendingGrant {
                     request: EndorsementRequest { body },
                     pending: Self {
                         config: self.config,
+                        scope: self.scope,
                         phase: GrantPhase::Responses(states),
                     },
                 })
@@ -350,6 +361,7 @@ impl PendingGrant {
                         let response = ec_ihat::ResponseMessage::from_bytes(response)?;
                         Ok(Endorsement {
                             config: self.config.clone(),
+                            scope: self.scope.clone(),
                             token: Box::new(ec_ihat::finalize(&self.config.key, state, &response)?),
                         })
                     })
@@ -411,21 +423,35 @@ impl PendingIssuance {
 }
 
 impl Endorsement {
+    pub fn scope(&self) -> &RedemptionScope {
+        &self.scope
+    }
+
     pub fn to_storage_bytes(&self) -> Zeroizing<Vec<u8>> {
-        secret_envelope(3, anchor_fingerprint(&self.config), &self.token.to_bytes())
+        let token = self.token.to_bytes();
+        let mut payload = Zeroizing::new(Vec::with_capacity(
+            VECTOR_PREFIX + self.scope.moderator_domain().len() + token.len(),
+        ));
+        put_vector(&mut payload, self.scope.moderator_domain().as_bytes());
+        payload.extend_from_slice(&token);
+        secret_envelope(8, anchor_fingerprint(&self.config), &payload)
     }
 
     pub fn from_storage_bytes(bytes: &[u8], configuration: &AnchorConfig) -> Result<Self, Error> {
-        let payload = read_secret(bytes, 3, anchor_fingerprint(configuration))?;
-        let token = ec_ihat::Endorsement::from_bytes(payload)?;
+        let mut reader = Reader::trusted(read_secret(bytes, 8, anchor_fingerprint(configuration))?);
+        let scope = RedemptionScope::for_moderator_domain(
+            std::str::from_utf8(reader.vector()?).map_err(|_| Error::Malformed)?,
+        )?;
+        let token = ec_ihat::Endorsement::from_bytes(reader.rest())?;
         ec_ihat::verify(
             &configuration.key,
             &token,
             &configuration.epoch,
-            REDEMPTION_CONTEXT,
+            &scope.context(),
         )?;
         Ok(Self {
             config: configuration.clone(),
+            scope,
             token: Box::new(token),
         })
     }
@@ -558,11 +584,7 @@ pub(crate) fn secret_envelope(
     ));
     bytes.extend_from_slice(b"GUAC\x02");
     bytes.push(kind);
-    let protocol = if matches!(kind, 3 | 5 | 6) {
-        EC_IHAT
-    } else {
-        ACT
-    };
+    let protocol = if matches!(kind, 6..=8) { EC_IHAT } else { ACT };
     bytes.extend_from_slice(&protocol.to_be_bytes());
     bytes.extend_from_slice(&fingerprint);
     put_vector(&mut bytes, secret);
@@ -574,11 +596,7 @@ pub(crate) fn read_secret(bytes: &[u8], kind: u8, fingerprint: [u8; 32]) -> Resu
     if reader.take(5)? != b"GUAC\x02" || reader.take(1)? != [kind] {
         return Err(Error::Malformed);
     }
-    reader.protocol(&[if matches!(kind, 3 | 5 | 6) {
-        EC_IHAT
-    } else {
-        ACT
-    }])?;
+    reader.protocol(&[if matches!(kind, 6..=8) { EC_IHAT } else { ACT }])?;
     if reader.array::<32>()? != fingerprint {
         return Err(Error::Mismatch);
     }

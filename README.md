@@ -76,6 +76,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 [examples/flow.rs](examples/flow.rs) adds an Anchor and update recovery: `cargo run --example flow`.
 
+Endorsement grants require a `RedemptionScope::for_moderator_domain("moderator.example")`.
+EC-IHAT binds this scope during the grant; redemption checks the Moderator endpoint's domain.
+The experimental context encoding scopes by domain only, not port, path, key, or policy.
+Use ASCII DNS names (punycode for international names); IP endpoints cannot redeem scoped endorsements.
+This breaks the previous `start_grant` / browser `startGrant` APIs and invalidates older
+endorsements and pending grants. Credential storage is unchanged.
+
 ### CLI
 
 Install from the checkout with `cargo install --path cli --locked`. With an Anchor, Moderator and protected endpoint running:

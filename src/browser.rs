@@ -167,11 +167,19 @@ pub struct PendingGrant {
     pending: Option<crate::PendingGrant>,
 }
 
-/// Asks for up to `count` (1 to 65535) endorsements; the Anchor may grant fewer.
+/// Asks for up to `count` (1 to 65535) endorsements scoped to `moderator_domain`.
 #[wasm_bindgen(js_name = startGrant)]
-pub fn start_grant(configuration: &AnchorConfig, count: u16) -> Result<PendingGrant, JsValue> {
+pub fn start_grant(
+    configuration: &AnchorConfig,
+    count: u16,
+    moderator_domain: &str,
+) -> Result<PendingGrant, JsValue> {
     let count = std::num::NonZeroU16::new(count).ok_or(crate::Error::Malformed)?;
-    let (request, pending) = crate::Client.start_grant(&configuration.0, count);
+    let (request, pending) = crate::Client.start_grant(
+        &configuration.0,
+        count,
+        &crate::RedemptionScope::for_moderator_domain(moderator_domain)?,
+    );
     Ok(PendingGrant {
         request,
         pending: Some(pending),
