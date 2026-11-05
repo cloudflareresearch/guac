@@ -154,6 +154,11 @@ impl ModeratorConfig {
         )?))
     }
 
+    #[wasm_bindgen(getter, js_name = moderatorDomain)]
+    pub fn moderator_domain(&self) -> Result<String, JsValue> {
+        Ok(self.0.redemption_scope()?.moderator_domain().to_owned())
+    }
+
     /// The Redeem & Issue endpoint, which also answers recovery.
     #[wasm_bindgen(getter)]
     pub fn endpoint(&self) -> String {
@@ -266,6 +271,12 @@ pub struct Endorsement(Option<crate::Endorsement>);
 
 #[wasm_bindgen]
 impl Endorsement {
+    #[wasm_bindgen(getter, js_name = moderatorDomain)]
+    pub fn moderator_domain(&self) -> Result<String, JsValue> {
+        let endorsement = self.0.as_ref().ok_or_else(|| consumed("endorsement"))?;
+        Ok(endorsement.scope().moderator_domain().to_owned())
+    }
+
     #[wasm_bindgen(js_name = toStorageBytes)]
     pub fn to_storage_bytes(&self) -> Result<Uint8Array, JsValue> {
         let endorsement = self.0.as_ref().ok_or_else(|| consumed("endorsement"))?;

@@ -49,6 +49,16 @@ pub fn issue(
         }
     };
     let config = directory.config_for(&accepted)?;
+    if let IssuanceInput::Endorsement(token) = &input {
+        let scope = config.redemption_scope()?;
+        if token.scope() != &scope {
+            bail!(
+                "endorsement is scoped to `{}`, not `{}`",
+                token.scope().moderator_domain(),
+                scope.moderator_domain()
+            );
+        }
+    }
     let response = http::request("POST", &directory.issuance_uri, directory.access, &[], None)?;
     let challenges = response.head.challenges();
     let challenge = Challenge::redemption(&challenges, &config).with_context(|| {

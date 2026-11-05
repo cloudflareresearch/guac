@@ -286,7 +286,8 @@ impl PendingGrant {
         let mut reader = Reader::trusted(read_secret(bytes, 7, anchor_fingerprint(configuration))?);
         let scope = RedemptionScope::for_moderator_domain(
             std::str::from_utf8(reader.vector()?).map_err(|_| Error::Malformed)?,
-        )?;
+        )
+        .map_err(|_| Error::Malformed)?;
         let phase = match reader.take(1)? {
             [0] => GrantPhase::Commitments(
                 NonZeroU16::new(u16::from_be_bytes(reader.array()?)).ok_or(Error::Malformed)?,
@@ -359,10 +360,17 @@ impl PendingGrant {
                     .zip(responses)
                     .map(|(state, response)| {
                         let response = ec_ihat::ResponseMessage::from_bytes(response)?;
+                        let token = ec_ihat::finalize(&self.config.key, state, &response)?;
+                        ec_ihat::verify(
+                            &self.config.key,
+                            &token,
+                            &self.config.epoch,
+                            &self.scope.context(),
+                        )?;
                         Ok(Endorsement {
                             config: self.config.clone(),
                             scope: self.scope.clone(),
-                            token: Box::new(ec_ihat::finalize(&self.config.key, state, &response)?),
+                            token: Box::new(token),
                         })
                     })
                     .collect::<Result<_, Error>>()
@@ -441,7 +449,8 @@ impl Endorsement {
         let mut reader = Reader::trusted(read_secret(bytes, 8, anchor_fingerprint(configuration))?);
         let scope = RedemptionScope::for_moderator_domain(
             std::str::from_utf8(reader.vector()?).map_err(|_| Error::Malformed)?,
-        )?;
+        )
+        .map_err(|_| Error::Malformed)?;
         let token = ec_ihat::Endorsement::from_bytes(reader.rest())?;
         ec_ihat::verify(
             &configuration.key,

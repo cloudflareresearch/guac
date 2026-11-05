@@ -448,6 +448,11 @@ fn run(cli: Cli, out: &Output) -> Result<ExitCode> {
                 let directory = remote::fetch_anchor(&saved.url, saved.access)?;
                 store.put_remote(Kind::Anchor, &anchor, &directory, true)?;
                 let destination: ModeratorDirectory = store.remote(Kind::Moderator, &moderator)?;
+                if !destination.endorsements.iter().any(|entry| {
+                    matches!(entry, remote::Accepted::EcIhat(anchors) if anchors.contains(&directory.anchor))
+                }) {
+                    out.notice(&format!("warning: the saved configuration for `{moderator}` does not accept this Anchor key and epoch; these endorsements may be unusable there"));
+                }
                 let options = grant::Options {
                     scope: destination.config()?.redemption_scope()?,
                     open_browser: !no_browser,
@@ -455,7 +460,7 @@ fn run(cli: Cli, out: &Output) -> Result<ExitCode> {
                     count,
                 };
                 let ids = grant::request(&mut store, &anchor, directory, &options, out)?;
-                out.data(json!({ "ids": ids, "anchor": anchor }), || ids.join("\n"));
+                out.data(json!({ "ids": ids, "anchor": anchor, "moderator_domain": options.scope.moderator_domain() }), || ids.join("\n"));
                 if let Some(id) = ids.first() {
                     out.progress(&format!(
                         "hint: run `guac credential issue --moderator {moderator} --endorsement {id}`"
@@ -463,17 +468,22 @@ fn run(cli: Cli, out: &Output) -> Result<ExitCode> {
                 }
             }
             EndorsementCommand::List => {
-                let rows = store.endorsements()?;
+                let rows = store
+                    .endorsements()?
+                    .into_iter()
+                    .map(|e| Ok((e.moderator_domain()?, e)))
+                    .collect::<Result<Vec<_>>>()?;
                 out.data(
-                    json!(rows.iter().map(|e| json!({ "id": e.id, "anchor": e.anchor, "created_at": e.created_at })).collect::<Vec<_>>()),
-                    || table(rows.iter().map(|e| vec![e.id.clone(), e.anchor.clone(), age(e.created_at)]).collect()),
+                    json!(rows.iter().map(|(domain, e)| json!({ "id": e.id, "anchor": e.anchor, "moderator_domain": domain, "created_at": e.created_at })).collect::<Vec<_>>()),
+                    || table(rows.iter().map(|(domain, e)| vec![e.id.clone(), e.anchor.clone(), domain.clone(), age(e.created_at)]).collect()),
                 );
             }
             EndorsementCommand::Show { id } => {
                 let e = store.endorsement(&id)?;
+                let domain = e.moderator_domain()?;
                 out.data(
-                    json!({ "id": e.id, "anchor": e.anchor, "created_at": e.created_at, "anchor_key": http::encode(&e.directory.anchor.key) }),
-                    || format!("id: {}\nanchor: {}\ncreated: {}\nanchor key: {}", e.id, e.anchor, age(e.created_at), http::encode(&e.directory.anchor.key)),
+                    json!({ "id": e.id, "anchor": e.anchor, "created_at": e.created_at, "moderator_domain": domain, "anchor_key": http::encode(&e.directory.anchor.key) }),
+                    || format!("id: {}\nanchor: {}\nmoderator domain: {}\ncreated: {}\nanchor key: {}", e.id, e.anchor, domain, age(e.created_at), http::encode(&e.directory.anchor.key)),
                 );
             }
             EndorsementCommand::Remove { id, force } => {

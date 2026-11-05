@@ -29,6 +29,9 @@ fn open(anchor: &Anchor, store: &impl GrantStore, now: u64) -> (EndorsementReque
         &guac::RedemptionScope::for_moderator_domain("moderator.example").expect("valid domain"),
     );
     assert_eq!(initial.to_bytes(), [0, 1]);
+    let client =
+        PendingGrant::from_storage_bytes(&client.to_storage_bytes(), anchor.configuration())
+            .unwrap();
     let commitment = anchor
         .grant(store, &initial, now, now + 30, NonZeroU16::MIN)
         .unwrap();
@@ -39,10 +42,14 @@ fn open(anchor: &Anchor, store: &impl GrantStore, now: u64) -> (EndorsementReque
 }
 
 fn complete(pending: PendingGrant, response: &EndorsementResponse) {
-    assert!(matches!(
-        pending.advance(response).unwrap(),
-        GrantStep::Complete(_)
-    ));
+    let GrantStep::Complete(endorsements) = pending.advance(response).unwrap() else {
+        panic!("endorsements")
+    };
+    assert!(
+        endorsements
+            .iter()
+            .all(|e| e.scope().moderator_domain() == "moderator.example")
+    );
 }
 
 #[test]
@@ -281,4 +288,30 @@ fn batches_fit_the_message_cap() {
         panic!("endorsements");
     };
     assert_eq!(endorsements.len(), usize::from(MAX_GRANT_COUNT.get()));
+}
+
+#[test]
+fn restored_grant_rejects_changed_or_malformed_scope() {
+    let anchor = Anchor::generate(b"epoch".to_vec()).unwrap();
+    let store = MemoryStore::default();
+    let (request, pending) = open(&anchor, &store, 10);
+    let mut bytes = pending.to_storage_bytes();
+    let offset = bytes
+        .windows(17)
+        .position(|b| b == b"moderator.example")
+        .unwrap();
+    bytes[offset] = b'_';
+    assert!(matches!(
+        PendingGrant::from_storage_bytes(&bytes, anchor.configuration()),
+        Err(Error::Malformed)
+    ));
+    bytes[offset..offset + 17].copy_from_slice(b"different.example");
+    let pending = PendingGrant::from_storage_bytes(&bytes, anchor.configuration()).unwrap();
+    let response = anchor
+        .grant(&store, &request, 11, 0, NonZeroU16::MIN)
+        .unwrap();
+    assert!(matches!(
+        pending.advance(&response),
+        Err(Error::Endorsement(_))
+    ));
 }

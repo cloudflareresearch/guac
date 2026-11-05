@@ -100,6 +100,17 @@ pub struct Endorsement {
     pub created_at: i64,
 }
 
+impl Endorsement {
+    pub fn moderator_domain(&self) -> Result<String> {
+        Ok(
+            guac::Endorsement::from_storage_bytes(&self.secret, &self.directory.anchor.config()?)?
+                .scope()
+                .moderator_domain()
+                .to_owned(),
+        )
+    }
+}
+
 pub struct Credential {
     pub name: String,
     pub moderator: String,

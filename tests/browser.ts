@@ -55,6 +55,7 @@ for (const test of cases) {
   }
 
   assert.equal(config.endpoint, test.endpoint);
+  assert.equal(config.moderatorDomain, new URL(test.endpoint).hostname);
   const issuance = guac.PendingIssuance.fromStorageBytes(Uint8Array.fromHex(test.issuance_state),
     test.issuance_request, config);
   assert.equal(issuance.authorization, test.issuance_request);
@@ -124,17 +125,27 @@ for (const test of cases) {
     assert.ok(anchor);
     // A rejected response leaves the grant usable.
     const configuration = new guac.AnchorConfig(Uint8Array.fromHex(anchor.public_key), Uint8Array.fromHex(anchor.epoch));
-    const grant = guac.startGrant(configuration, 1, new URL(test.endpoint).hostname);
+    assert.throws(() => guac.startGrant(configuration, 1, 'bad_domain'), { code: 'configuration' });
+    const grant = guac.startGrant(configuration, 1, config.moderatorDomain);
     assert.throws(() => grant.advance(new Uint8Array(), 'text/plain'), { code: 'mismatch' });
     assert.ok(grant.toStorageBytes().length);
     grant.free();
     configuration.free();
     assert.ok(found);
+    assert.equal(found.moderatorDomain, config.moderatorDomain);
     assert.equal(found.toStorageBytes().toHex(), test.endorsement_storage);
   }
   const endorsement = found;
   const redemption = test.redemption_challenge;
   if (endorsement) {
+    const keys = Uint8Array.fromHex(test.anchors.map(anchor => anchor.public_key).join(''));
+    const epoch = Uint8Array.fromHex(test.anchors[0].epoch);
+    assert.throws(() => guac.ModeratorConfig.withEndorsements('https://127.0.0.1/', args[1], args[2], args[3], args[4], keys, epoch), { code: 'configuration' });
+    const other = guac.ModeratorConfig.withEndorsements('https://different.example/',
+      args[1], args[2], args[3], args[4], keys, epoch);
+    assert.throws(() => endorsement.requestCredential(other, redemption), { code: 'mismatch' });
+    assert.equal(endorsement.moderatorDomain, config.moderatorDomain);
+    other.free();
     assert.throws(() => endorsement.requestCredential(config, 'Mole redeem-0001=""'), { code: 'challenge' });
     assert.equal(endorsement.toStorageBytes().toHex(), test.endorsement_storage); // Still unspent.
   }
@@ -147,7 +158,10 @@ for (const test of cases) {
     { code: 'mismatch' });
   retry.free();
   request.free();
-  if (endorsement) assert.throws(() => endorsement.toStorageBytes());
+  if (endorsement) {
+    assert.throws(() => endorsement.toStorageBytes());
+    assert.throws(() => endorsement.moderatorDomain, { code: 'consumed' });
+  }
   assert.throws(() => guac.Credential.fromStorageBytes(new Uint8Array(), config));
 
   // Imported secrets are wiped from Wasm memory once decoded.

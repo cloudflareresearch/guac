@@ -169,6 +169,26 @@ fn moderator_endpoint_requires_https_or_loopback_http() {
     ] {
         assert!(config(ok).is_ok(), "{ok}");
     }
+    let anchor = guac::Anchor::generate(b"epoch".to_vec()).unwrap();
+    let policy = guac::EndorsementPolicy::Required(
+        guac::AnchorSet::new(&[anchor.configuration().clone()]).unwrap(),
+    );
+    for endpoint in [
+        "https://127.0.0.1/",
+        "http://[::1]/",
+        "https://my_moderator.example/",
+    ] {
+        assert!(matches!(
+            guac::ModeratorConfig::new(endpoint, &key, 4, vec![], policy.clone(), 60),
+            Err(Error::Configuration(_))
+        ));
+    }
+    let idn =
+        guac::ModeratorConfig::new("https://bücher.example/", &key, 4, vec![], policy, 60).unwrap();
+    assert_eq!(
+        idn.redemption_scope().unwrap().moderator_domain(),
+        "xn--bcher-kva.example"
+    );
     for bad in [
         "http://m.example/issue",
         "http://127.0.0.1.example/",
@@ -194,6 +214,22 @@ fn content_type_parameters() {
     ));
     assert!(matches!(
         check("application/mole-endorsement-response; type=\"0002"),
+        Err(Error::Malformed)
+    ));
+}
+
+#[test]
+fn scoped_secret_envelopes() {
+    let anchor = guac::Anchor::generate(b"epoch".to_vec()).unwrap();
+    let scope = guac::RedemptionScope::for_moderator_domain("moderator.example").unwrap();
+    let (_, pending) =
+        guac::Client.start_grant(anchor.configuration(), std::num::NonZeroU16::MIN, &scope);
+    let mut bytes = pending.to_storage_bytes();
+    assert_eq!(&bytes[..8], b"GUAC\x02\x07\x00\x02");
+    assert_eq!(&bytes[40..], b"\x15\x11moderator.example\x00\x00\x01");
+    bytes[5] = 5;
+    assert!(matches!(
+        guac::PendingGrant::from_storage_bytes(&bytes, anchor.configuration()),
         Err(Error::Malformed)
     ));
 }

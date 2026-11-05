@@ -21,8 +21,11 @@ fuzz_target!(|bytes: &[u8]| {
         let _ = anchor.grant(&store, &request, 0, 30, NonZeroU16::MIN);
     }
     let _ = PendingGrant::from_storage_bytes(bytes, config);
+    let _ = guac::Endorsement::from_storage_bytes(bytes, config);
 
-    let (request, pending) = Client.start_grant(config, NonZeroU16::MIN);
+    let scope =
+        guac::RedemptionScope::for_moderator_domain("moderator.example").expect("fuzz domain");
+    let (request, pending) = Client.start_grant(config, NonZeroU16::MIN, &scope);
     if let Ok(response) = EndorsementResponse::from_bytes(bytes) {
         let restored = PendingGrant::from_storage_bytes(&pending.to_storage_bytes(), config)
             .expect("valid commitments state");

@@ -30,6 +30,7 @@ users pin this crate by Git revision.
 cargo fmt --all --check
 cargo clippy --workspace --all-features --all-targets --locked -- -D warnings
 cargo test --workspace --locked
+cargo check --locked --manifest-path fuzz/Cargo.toml --bins
 cargo check --target wasm32-unknown-unknown --features browser --locked
 wasm-pack build --target web --out-dir target/browser-web --features browser --locked
 npm ci --prefix tests && npm run --prefix tests typecheck   # after wasm-pack

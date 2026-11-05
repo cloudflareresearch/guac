@@ -167,7 +167,7 @@ impl ModeratorConfig {
         if context.len() > usize::from(u16::MAX) - 1 || result_retention_seconds == 0 {
             return Err(Error::Configuration("context length or result retention"));
         }
-        Ok(Self {
+        let config = Self {
             endpoint,
             key: act::PublicKey::from_bytes(public_key)?,
             key_id: digest(public_key),
@@ -175,7 +175,11 @@ impl ModeratorConfig {
             params: parameters(balance_bits)?,
             endorsements,
             retention: result_retention_seconds,
-        })
+        };
+        if matches!(config.endorsements, EndorsementPolicy::Required(_)) {
+            config.redemption_scope()?;
+        }
+        Ok(config)
     }
 
     pub fn endpoint(&self) -> &Url {

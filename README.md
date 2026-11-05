@@ -79,6 +79,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 Endorsement grants require a `RedemptionScope::for_moderator_domain("moderator.example")`.
 EC-IHAT binds this scope during the grant; redemption checks the Moderator endpoint's domain.
 The experimental context encoding scopes by domain only, not port, path, key, or policy.
+Use one Moderator per domain; all replicas must share its replay store. A shared domain
+is not a tenant boundary. The server endpoint must use the same public domain as the
+published `issuance-uri`, including behind a reverse proxy.
+The local context profile is `MOLE-EC-IHAT-ctx_red-v2 || vector(canonical_domain)`;
+this encoding is experimental, not a standardized MOLE profile.
 Use ASCII DNS names (punycode for international names); IP endpoints cannot redeem scoped endorsements.
 This breaks the previous `start_grant` / browser `startGrant` APIs and invalidates older
 endorsements and pending grants. Credential storage is unchanged.
@@ -95,6 +100,10 @@ guac endorsement request --anchor my-anchor --moderator my-site --count 3
 guac credential issue --moderator my-site --endorsement <endorsement-id> --as my-site-credential
 guac curl --credential my-site-credential -- -X POST https://api.example/counter
 ```
+
+The CLI uses the saved Moderator configuration at grant time and warns if it does not
+accept the Anchor. Refresh it with `guac moderator add <name> <url> --force` when needed.
+It does not contact the Moderator during the grant. Endorsement output includes its domain.
 
 The CLI saves client state locally. You can run `guac --help` to learn more.
 

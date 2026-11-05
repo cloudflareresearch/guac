@@ -685,11 +685,41 @@ fn endorsement_scope_survives_storage_and_rejects_another_domain() {
         Err(Error::Endorsement(_))
     ));
 
+    let same = Moderator::from_secret(
+        &moderator.to_secret_bytes(),
+        "https://MODERATOR.EXAMPLE.:8443/another-path",
+        4,
+        bytes(&case.credential_context),
+        EndorsementPolicy::Required(AnchorSet::new(&anchors).unwrap()),
+        60,
+    )
+    .unwrap();
+    let (request, _) = Client
+        .request_credential(
+            IssuanceInput::Endorsement(Endorsement::from_storage_bytes(&stored, &config).unwrap()),
+            same.configuration(),
+            &same.redemption_challenge(100).unwrap(),
+        )
+        .unwrap();
+    assert!(same.prepare_issuance(&request, 8, 100).is_ok());
+
+    assert_eq!(&stored[..8], b"GUAC\x02\x08\x00\x02");
+    let mut legacy = stored.clone();
+    legacy[5] = 3;
+    assert!(matches!(
+        Endorsement::from_storage_bytes(&legacy, &config),
+        Err(Error::Malformed)
+    ));
     let mut tampered = stored;
     let offset = tampered
         .windows(17)
         .position(|bytes| bytes == b"moderator.example")
         .unwrap();
+    tampered[offset] = b'_';
+    assert!(matches!(
+        Endorsement::from_storage_bytes(&tampered, &config),
+        Err(Error::Malformed)
+    ));
     tampered[offset..offset + 17].copy_from_slice(b"different.example");
     assert!(matches!(
         Endorsement::from_storage_bytes(&tampered, &config),
