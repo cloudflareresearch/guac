@@ -169,6 +169,13 @@ impl Store {
             .create(&home)
             .with_context(|| format!("cannot create {}", home.display()))?;
         let path = home.join("guac.sqlite3");
+        #[cfg(unix)]
+        std::os::unix::fs::OpenOptionsExt::mode(
+            std::fs::OpenOptions::new().append(true).create(true),
+            0o600,
+        )
+        .open(&path)
+        .with_context(|| format!("cannot create {}", path.display()))?;
         let conn =
             Connection::open(&path).with_context(|| format!("cannot open {}", path.display()))?;
         #[cfg(unix)]

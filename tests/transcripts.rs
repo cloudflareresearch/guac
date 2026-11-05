@@ -662,6 +662,22 @@ fn endorsement_replay_is_rejected_even_under_a_fresh_challenge() {
     ));
 }
 
+#[test]
+fn broken_issuance_proof_under_a_valid_endorsement_is_a_credential_error() {
+    let case = &corpus().cases[0];
+    let (moderator, _) = setup(case);
+    let request = issuance(case);
+    let mut proof = request.issuance().to_vec();
+    *proof.last_mut().unwrap() ^= 1;
+    let broken =
+        CredentialRequest::from_parts(request.endorsement_type(), request.redemption(), &proof)
+            .unwrap();
+    for now in [100, 120] {
+        let result = moderator.prepare_issuance(&broken, 8, now);
+        assert!(matches!(result, Err(Error::Credential(_))), "{now}");
+    }
+}
+
 #[derive(Default)]
 struct FailingStore {
     memory: MemoryStore,

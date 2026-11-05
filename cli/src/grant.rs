@@ -319,7 +319,15 @@ fn answer(mut stream: TcpStream, state: &str, deadline: Instant) -> Result<Optio
         bail!("browser approval failed: {error}");
     }
     match query("code") {
-        Some(code) if !code.is_empty() && code.len() <= 256 => {
+        Some(code)
+            if !code.is_empty()
+                && code.len() <= 256
+                // Printable ASCII (RFC 6749 VSCHAR) minus `"` and `\`: the code is
+                // sent unescaped in the quoted-string Guac-Authorization header.
+                && code
+                    .bytes()
+                    .all(|b| (0x20..=0x7e).contains(&b) && b != b'"' && b != b'\\') =>
+        {
             reply(
                 stream,
                 "200 OK",
@@ -328,7 +336,7 @@ fn answer(mut stream: TcpStream, state: &str, deadline: Instant) -> Result<Optio
             Ok(Some(code))
         }
         _ => {
-            reply(stream, "400 Bad Request", "Missing authorization code.");
+            reply(stream, "400 Bad Request", "Invalid authorization code.");
             Ok(None)
         }
     }

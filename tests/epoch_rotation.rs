@@ -43,7 +43,9 @@ fn client_config(moderator: &Moderator, set: &AnchorSet) -> ModeratorConfig {
 fn previous_epoch_endorsements_redeem_during_rotation() {
     let old = Anchor::generate(b"day-1".to_vec()).unwrap();
     let new = Anchor::generate(b"day-2".to_vec()).unwrap();
-    let old_set = AnchorSet::new(&[old.configuration().clone()]).unwrap();
+    let other = Anchor::generate(b"day-1".to_vec()).unwrap();
+    let old_set =
+        AnchorSet::new(&[old.configuration().clone(), other.configuration().clone()]).unwrap();
     let new_set = AnchorSet::new(&[new.configuration().clone()]).unwrap();
     let only_new = Moderator::generate(
         ENDPOINT,
@@ -84,6 +86,7 @@ fn previous_epoch_endorsements_redeem_during_rotation() {
             .unwrap();
         let issuance = moderator.prepare_issuance(&request, 8, 0).unwrap();
         assert_eq!(issuance.epoch(), Some(&epoch[..]));
+        assert!(moderator.prepare_issuance(&request, 8, 30).is_ok());
         assert!(moderator.issue(&store, &request, 8, 0).is_ok());
         assert!(matches!(
             moderator.issue(&store, &request, 8, 0),

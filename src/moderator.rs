@@ -225,15 +225,13 @@ impl Moderator {
     ) -> Result<Issuance, Error> {
         let window = now / CHALLENGE_WINDOW_SECONDS;
         let challenge = self.redemption_challenge_for(window);
-        self.prepare_issuance_with(request, &challenge, initial_credits)
-            .or_else(|error| {
-                if window == 0 || matches!(self.config.endorsements, EndorsementPolicy::NotRequired)
-                {
-                    return Err(error);
-                }
+        match self.prepare_issuance_with(request, &challenge, initial_credits) {
+            Err(Error::Endorsement(_)) if window > 0 => {
                 let challenge = self.redemption_challenge_for(window - 1);
                 self.prepare_issuance_with(request, &challenge, initial_credits)
-            })
+            }
+            result => result,
+        }
     }
 
     fn prepare_issuance_with(
@@ -270,9 +268,13 @@ impl Moderator {
                     )?;
                     Ok((id, set.epoch.clone()))
                 };
-                // The current epoch's error wins when neither set verifies.
+                // The current epoch's error wins when neither set verifies, unless
+                // the redemption only decodes under the previous set's proof depth.
                 Some(verify(set).or_else(|error| match &self.previous {
-                    Some(previous) => verify(previous).map_err(|_| error),
+                    Some(previous) => verify(previous).map_err(|other| match error {
+                        Error::Malformed => other,
+                        error => error,
+                    }),
                     None => Err(error),
                 })?)
             }
