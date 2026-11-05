@@ -7,7 +7,42 @@ use crate::{
     protocol::{EC_IHAT, NO_ENDORSEMENT, digest, put_vector},
 };
 
-pub(crate) const REDEMPTION_CONTEXT: &[u8] = b"MOLE-EC-IHAT-ctx_red-v1";
+/// Experimental domain-scoped redemption audience; its encoding may change.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct RedemptionScope(String);
+
+impl RedemptionScope {
+    /// Accepts an ASCII DNS name (including punycode), without a scheme or port.
+    pub fn for_moderator_domain(domain: &str) -> Result<Self, Error> {
+        let domain = domain.strip_suffix('.').unwrap_or(domain);
+        if domain.is_empty()
+            || domain.len() > 253
+            || !domain.split('.').all(|label| {
+                !label.is_empty()
+                    && label.len() <= 63
+                    && !label.starts_with('-')
+                    && !label.ends_with('-')
+                    && label
+                        .bytes()
+                        .all(|b| b.is_ascii_alphanumeric() || b == b'-')
+            })
+            || !matches!(url::Host::parse(domain), Ok(url::Host::Domain(_)))
+        {
+            return Err(Error::Configuration("Moderator scope must be a DNS name"));
+        }
+        Ok(Self(domain.to_ascii_lowercase()))
+    }
+
+    pub fn moderator_domain(&self) -> &str {
+        &self.0
+    }
+
+    pub(crate) fn context(&self) -> Vec<u8> {
+        let mut context = b"MOLE-EC-IHAT-ctx_red-v2".to_vec();
+        put_vector(&mut context, self.0.as_bytes());
+        context
+    }
+}
 
 /// Authenticated Anchor key and the canonical issuance epoch bytes.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -132,7 +167,7 @@ impl ModeratorConfig {
         if context.len() > usize::from(u16::MAX) - 1 || result_retention_seconds == 0 {
             return Err(Error::Configuration("context length or result retention"));
         }
-        Ok(Self {
+        let config = Self {
             endpoint,
             key: act::PublicKey::from_bytes(public_key)?,
             key_id: digest(public_key),
@@ -140,11 +175,20 @@ impl ModeratorConfig {
             params: parameters(balance_bits)?,
             endorsements,
             retention: result_retention_seconds,
-        })
+        };
+        if matches!(config.endorsements, EndorsementPolicy::Required(_)) {
+            config.redemption_scope()?;
+        }
+        Ok(config)
     }
 
     pub fn endpoint(&self) -> &Url {
         &self.endpoint
+    }
+    pub fn redemption_scope(&self) -> Result<RedemptionScope, Error> {
+        RedemptionScope::for_moderator_domain(self.endpoint.domain().ok_or(
+            Error::Configuration("Moderator scope requires a domain endpoint"),
+        )?)
     }
     pub fn public_key(&self) -> [u8; 33] {
         self.key.to_bytes()
@@ -200,6 +244,30 @@ fn parameters(width: u8) -> Result<Arc<act::Params>, Error> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn moderator_scope_domains() {
+        let scope = RedemptionScope::for_moderator_domain("Moderator.Example.").unwrap();
+        assert_eq!(scope.moderator_domain(), "moderator.example");
+        for domain in [
+            "",
+            "https://example.com",
+            "example.com:443",
+            "a/b",
+            "a..b",
+            "-a.example",
+            "a_.example",
+            "127.0.0.1",
+            "[::1]",
+            "é.example",
+            "a.example..",
+        ] {
+            assert!(
+                RedemptionScope::for_moderator_domain(domain).is_err(),
+                "{domain}"
+            );
+        }
+    }
 
     #[test]
     fn parameter_reuse_preserves_width_and_live_configurations() {

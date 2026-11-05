@@ -34,7 +34,7 @@ const EXAMPLES: &str = "\
 Examples:
   guac anchor add work https://anchor.example/config
   guac moderator add api https://moderator.example/config
-  guac endorsement request --anchor work
+  guac endorsement request --moderator api --anchor work
   guac credential issue --moderator api --endorsement end_7f3a91c2d4e5 --as work-api
   guac curl --credential work-api -- -X POST https://api.example/counter
   guac status
@@ -122,6 +122,9 @@ enum EndorsementCommand {
     Request {
         #[arg(long)]
         anchor: String,
+        /// Registered Moderator this endorsement may be redeemed with.
+        #[arg(long)]
+        moderator: String,
         /// Print the approval URL instead of opening a browser.
         #[arg(long)]
         no_browser: bool,
@@ -437,37 +440,50 @@ fn run(cli: Cli, out: &Output) -> Result<ExitCode> {
         Command::Endorsement(command) => match command {
             EndorsementCommand::Request {
                 anchor,
+                moderator,
                 no_browser,
                 count,
             } => {
                 let saved: AnchorDirectory = store.remote(Kind::Anchor, &anchor)?;
                 let directory = remote::fetch_anchor(&saved.url, saved.access)?;
                 store.put_remote(Kind::Anchor, &anchor, &directory, true)?;
+                let destination: ModeratorDirectory = store.remote(Kind::Moderator, &moderator)?;
+                if !destination.endorsements.iter().any(|entry| {
+                    matches!(entry, remote::Accepted::EcIhat(anchors) if anchors.contains(&directory.anchor))
+                }) {
+                    out.notice(&format!("warning: the saved configuration for `{moderator}` does not accept this Anchor key and epoch; these endorsements may be unusable there"));
+                }
                 let options = grant::Options {
+                    scope: destination.config()?.redemption_scope()?,
                     open_browser: !no_browser,
                     interactive: !cli.no_input,
                     count,
                 };
                 let ids = grant::request(&mut store, &anchor, directory, &options, out)?;
-                out.data(json!({ "ids": ids, "anchor": anchor }), || ids.join("\n"));
+                out.data(json!({ "ids": ids, "anchor": anchor, "moderator_domain": options.scope.moderator_domain() }), || ids.join("\n"));
                 if let Some(id) = ids.first() {
                     out.progress(&format!(
-                        "hint: run `guac credential issue --moderator <name> --endorsement {id}`"
+                        "hint: run `guac credential issue --moderator {moderator} --endorsement {id}`"
                     ));
                 }
             }
             EndorsementCommand::List => {
-                let rows = store.endorsements()?;
+                let rows = store
+                    .endorsements()?
+                    .into_iter()
+                    .map(|e| Ok((e.moderator_domain()?, e)))
+                    .collect::<Result<Vec<_>>>()?;
                 out.data(
-                    json!(rows.iter().map(|e| json!({ "id": e.id, "anchor": e.anchor, "created_at": e.created_at })).collect::<Vec<_>>()),
-                    || table(rows.iter().map(|e| vec![e.id.clone(), e.anchor.clone(), age(e.created_at)]).collect()),
+                    json!(rows.iter().map(|(domain, e)| json!({ "id": e.id, "anchor": e.anchor, "moderator_domain": domain, "created_at": e.created_at })).collect::<Vec<_>>()),
+                    || table(rows.iter().map(|(domain, e)| vec![e.id.clone(), e.anchor.clone(), domain.clone(), age(e.created_at)]).collect()),
                 );
             }
             EndorsementCommand::Show { id } => {
                 let e = store.endorsement(&id)?;
+                let domain = e.moderator_domain()?;
                 out.data(
-                    json!({ "id": e.id, "anchor": e.anchor, "created_at": e.created_at, "anchor_key": http::encode(&e.directory.anchor.key) }),
-                    || format!("id: {}\nanchor: {}\ncreated: {}\nanchor key: {}", e.id, e.anchor, age(e.created_at), http::encode(&e.directory.anchor.key)),
+                    json!({ "id": e.id, "anchor": e.anchor, "created_at": e.created_at, "moderator_domain": domain, "anchor_key": http::encode(&e.directory.anchor.key) }),
+                    || format!("id: {}\nanchor: {}\nmoderator domain: {}\ncreated: {}\nanchor key: {}", e.id, e.anchor, domain, age(e.created_at), http::encode(&e.directory.anchor.key)),
                 );
             }
             EndorsementCommand::Remove { id, force } => {

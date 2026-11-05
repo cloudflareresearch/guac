@@ -154,6 +154,11 @@ impl ModeratorConfig {
         )?))
     }
 
+    #[wasm_bindgen(getter, js_name = moderatorDomain)]
+    pub fn moderator_domain(&self) -> Result<String, JsValue> {
+        Ok(self.0.redemption_scope()?.moderator_domain().to_owned())
+    }
+
     /// The Redeem & Issue endpoint, which also answers recovery.
     #[wasm_bindgen(getter)]
     pub fn endpoint(&self) -> String {
@@ -167,11 +172,19 @@ pub struct PendingGrant {
     pending: Option<crate::PendingGrant>,
 }
 
-/// Asks for up to `count` (1 to 65535) endorsements; the Anchor may grant fewer.
+/// Asks for up to `count` (1 to 65535) endorsements scoped to `moderator_domain`.
 #[wasm_bindgen(js_name = startGrant)]
-pub fn start_grant(configuration: &AnchorConfig, count: u16) -> Result<PendingGrant, JsValue> {
+pub fn start_grant(
+    configuration: &AnchorConfig,
+    count: u16,
+    moderator_domain: &str,
+) -> Result<PendingGrant, JsValue> {
     let count = std::num::NonZeroU16::new(count).ok_or(crate::Error::Malformed)?;
-    let (request, pending) = crate::Client.start_grant(&configuration.0, count);
+    let (request, pending) = crate::Client.start_grant(
+        &configuration.0,
+        count,
+        &crate::RedemptionScope::for_moderator_domain(moderator_domain)?,
+    );
     Ok(PendingGrant {
         request,
         pending: Some(pending),
@@ -258,6 +271,12 @@ pub struct Endorsement(Option<crate::Endorsement>);
 
 #[wasm_bindgen]
 impl Endorsement {
+    #[wasm_bindgen(getter, js_name = moderatorDomain)]
+    pub fn moderator_domain(&self) -> Result<String, JsValue> {
+        let endorsement = self.0.as_ref().ok_or_else(|| consumed("endorsement"))?;
+        Ok(endorsement.scope().moderator_domain().to_owned())
+    }
+
     #[wasm_bindgen(js_name = toStorageBytes)]
     pub fn to_storage_bytes(&self) -> Result<Uint8Array, JsValue> {
         let endorsement = self.0.as_ref().ok_or_else(|| consumed("endorsement"))?;

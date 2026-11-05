@@ -4,7 +4,6 @@ use zeroize::Zeroizing;
 
 use crate::{
     AnchorSet, EndorsementPolicy, Error, ModeratorConfig,
-    config::REDEMPTION_CONTEXT,
     protocol::{
         CredentialChallenge, CredentialPresentation, CredentialRequest, CredentialResponse,
         CredentialUpdate, ModeratorChallenge, Reader, RecoveryHandle, digest, put_vector,
@@ -265,7 +264,7 @@ impl Moderator {
                         &set.keys,
                         &redemption,
                         &set.epoch,
-                        REDEMPTION_CONTEXT,
+                        &self.config.redemption_scope()?.context(),
                         &challenge.digest(),
                     )?;
                     Ok((id, set.epoch.clone()))

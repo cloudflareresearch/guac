@@ -23,8 +23,15 @@ impl GrantStore for Saved {
 }
 
 fn open(anchor: &Anchor, store: &impl GrantStore, now: u64) -> (EndorsementRequest, PendingGrant) {
-    let (initial, client) = Client.start_grant(anchor.configuration(), NonZeroU16::MIN);
+    let (initial, client) = Client.start_grant(
+        anchor.configuration(),
+        NonZeroU16::MIN,
+        &guac::RedemptionScope::for_moderator_domain("moderator.example").expect("valid domain"),
+    );
     assert_eq!(initial.to_bytes(), [0, 1]);
+    let client =
+        PendingGrant::from_storage_bytes(&client.to_storage_bytes(), anchor.configuration())
+            .unwrap();
     let commitment = anchor
         .grant(store, &initial, now, now + 30, NonZeroU16::MIN)
         .unwrap();
@@ -35,10 +42,14 @@ fn open(anchor: &Anchor, store: &impl GrantStore, now: u64) -> (EndorsementReque
 }
 
 fn complete(pending: PendingGrant, response: &EndorsementResponse) {
-    assert!(matches!(
-        pending.advance(response).unwrap(),
-        GrantStep::Complete(_)
-    ));
+    let GrantStep::Complete(endorsements) = pending.advance(response).unwrap() else {
+        panic!("endorsements")
+    };
+    assert!(
+        endorsements
+            .iter()
+            .all(|e| e.scope().moderator_domain() == "moderator.example")
+    );
 }
 
 #[test]
@@ -100,7 +111,11 @@ fn grant_sessions_are_single_use() {
 fn grant_sessions_need_a_future_expiry() {
     let anchor = Anchor::generate(b"epoch".to_vec()).unwrap();
     let store = MemoryStore::default();
-    let (initial, _) = Client.start_grant(anchor.configuration(), NonZeroU16::MIN);
+    let (initial, _) = Client.start_grant(
+        anchor.configuration(),
+        NonZeroU16::MIN,
+        &guac::RedemptionScope::for_moderator_domain("moderator.example").expect("valid domain"),
+    );
     assert!(matches!(
         anchor.grant(&store, &initial, 100, 100, NonZeroU16::MIN),
         Err(Error::Session)
@@ -178,7 +193,11 @@ fn grant_requests_name_their_batch() {
         }
     }
     let anchor = Anchor::generate(b"epoch".to_vec()).unwrap();
-    let (initial, _) = Client.start_grant(anchor.configuration(), NonZeroU16::MIN);
+    let (initial, _) = Client.start_grant(
+        anchor.configuration(),
+        NonZeroU16::MIN,
+        &guac::RedemptionScope::for_moderator_domain("moderator.example").expect("valid domain"),
+    );
     assert_eq!(
         initial.grant().unwrap(),
         GrantRequest::Open(NonZeroU16::MIN)
@@ -195,7 +214,11 @@ fn batches_grant_at_most_the_count_and_the_limit() {
     let anchor = Anchor::generate(b"epoch".to_vec()).unwrap();
     let store = MemoryStore::default();
     let count = NonZeroU16::new(3).unwrap();
-    let (initial, pending) = Client.start_grant(anchor.configuration(), count);
+    let (initial, pending) = Client.start_grant(
+        anchor.configuration(),
+        count,
+        &guac::RedemptionScope::for_moderator_domain("moderator.example").expect("valid domain"),
+    );
     let limit = NonZeroU16::new(2).unwrap();
     let commitments = anchor.grant(&store, &initial, 10, 40, limit).unwrap();
     let GrantStep::Continue { request, pending } = pending.advance(&commitments).unwrap() else {
@@ -208,13 +231,25 @@ fn batches_grant_at_most_the_count_and_the_limit() {
     assert_eq!(endorsements.len(), 2);
 
     // A Client asking for one rejects a batch of two.
-    let (initial, _) = Client.start_grant(anchor.configuration(), count);
+    let (initial, _) = Client.start_grant(
+        anchor.configuration(),
+        count,
+        &guac::RedemptionScope::for_moderator_domain("moderator.example").expect("valid domain"),
+    );
     let commitments = anchor.grant(&store, &initial, 10, 40, limit).unwrap();
-    let (_, one) = Client.start_grant(anchor.configuration(), NonZeroU16::MIN);
+    let (_, one) = Client.start_grant(
+        anchor.configuration(),
+        NonZeroU16::MIN,
+        &guac::RedemptionScope::for_moderator_domain("moderator.example").expect("valid domain"),
+    );
     assert!(matches!(one.advance(&commitments), Err(Error::Malformed)));
 
     // Dropping a challenge consumes the batch without signing.
-    let (_, pending) = Client.start_grant(anchor.configuration(), count);
+    let (_, pending) = Client.start_grant(
+        anchor.configuration(),
+        count,
+        &guac::RedemptionScope::for_moderator_domain("moderator.example").expect("valid domain"),
+    );
     let GrantStep::Continue { request, .. } = pending.advance(&commitments).unwrap() else {
         panic!("challenges");
     };
@@ -235,7 +270,11 @@ fn batches_grant_at_most_the_count_and_the_limit() {
 fn batches_fit_the_message_cap() {
     let anchor = Anchor::generate(b"epoch".to_vec()).unwrap();
     let store = MemoryStore::default();
-    let (initial, pending) = Client.start_grant(anchor.configuration(), NonZeroU16::MAX);
+    let (initial, pending) = Client.start_grant(
+        anchor.configuration(),
+        NonZeroU16::MAX,
+        &guac::RedemptionScope::for_moderator_domain("moderator.example").expect("valid domain"),
+    );
     let commitments = anchor
         .grant(&store, &initial, 10, 40, NonZeroU16::MAX)
         .unwrap();
@@ -249,4 +288,30 @@ fn batches_fit_the_message_cap() {
         panic!("endorsements");
     };
     assert_eq!(endorsements.len(), usize::from(MAX_GRANT_COUNT.get()));
+}
+
+#[test]
+fn restored_grant_rejects_changed_or_malformed_scope() {
+    let anchor = Anchor::generate(b"epoch".to_vec()).unwrap();
+    let store = MemoryStore::default();
+    let (request, pending) = open(&anchor, &store, 10);
+    let mut bytes = pending.to_storage_bytes();
+    let offset = bytes
+        .windows(17)
+        .position(|b| b == b"moderator.example")
+        .unwrap();
+    bytes[offset] = b'_';
+    assert!(matches!(
+        PendingGrant::from_storage_bytes(&bytes, anchor.configuration()),
+        Err(Error::Malformed)
+    ));
+    bytes[offset..offset + 17].copy_from_slice(b"different.example");
+    let pending = PendingGrant::from_storage_bytes(&bytes, anchor.configuration()).unwrap();
+    let response = anchor
+        .grant(&store, &request, 11, 0, NonZeroU16::MIN)
+        .unwrap();
+    assert!(matches!(
+        pending.advance(&response),
+        Err(Error::Endorsement(_))
+    ));
 }

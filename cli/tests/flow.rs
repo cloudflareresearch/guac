@@ -178,10 +178,15 @@ impl Server {
                     response.to_bytes(),
                 )
             }
-            ("GET", "/moderator/config") => {
+            (
+                "GET",
+                "/moderator/config"
+                | "/moderator/other-config"
+                | "/moderator/no-endorsement-config",
+            ) => {
                 let c = self.moderator.configuration();
                 let anchor = self.anchor.configuration().clone();
-                reply(200, &[], serde_json::json!({
+                let mut value = serde_json::json!({
                     "issuance-uri": c.endpoint().as_str(),
                     "credential-keys": [
                         { "credential-type": 1, "ciphersuite": "unknown" },
@@ -193,7 +198,14 @@ impl Server {
                         { "endorsement-type": 2, "ciphersuite": "P256-SHA256", "issuance-epoch": B64.encode(anchor.epoch()),
                           "anchor-set": [B64.encode(anchor.public_key())] },
                     ],
-                }).to_string())
+                });
+                if path == "/moderator/other-config" {
+                    value["issuance-uri"] = "https://different.example/issue".into();
+                }
+                if path == "/moderator/no-endorsement-config" {
+                    value["endorsements"] = serde_json::json!([{ "endorsement-type": 1 }]);
+                }
+                reply(200, &[], value.to_string())
             }
             ("POST", "/moderator/issue") => {
                 let fresh = || {
@@ -330,7 +342,7 @@ fn rand_u64() -> u64 {
 
 fn serve(approval: bool) -> Arc<Server> {
     let listener = TcpListener::bind("127.0.0.1:0").unwrap();
-    let origin = format!("http://127.0.0.1:{}", listener.local_addr().unwrap().port());
+    let origin = format!("http://localhost:{}", listener.local_addr().unwrap().port());
     let anchor = Anchor::generate(b"epoch-1".to_vec()).unwrap();
     let set = AnchorSet::new(&[anchor.configuration().clone()]).unwrap();
     let moderator = Moderator::generate(
@@ -433,7 +445,15 @@ fn balance(home: &Path, name: &str) -> u64 {
 fn endorse(home: &Path, server: &Server) -> String {
     let mut child = guac(
         home,
-        &["endorsement", "request", "--anchor", "a", "--no-browser"],
+        &[
+            "endorsement",
+            "request",
+            "--anchor",
+            "a",
+            "--moderator",
+            "m",
+            "--no-browser",
+        ],
     )
     .stdout(Stdio::piped())
     .stderr(Stdio::piped())
@@ -531,6 +551,41 @@ fn endorse_issue_spend_recover() {
 
     let id = endorse(home, &server);
     assert!(id.starts_with("end_"), "{id}");
+    let before = ok(home, &["--json", "endorsement", "show", &id]);
+    assert_eq!(
+        serde_json::from_str::<serde_json::Value>(&before).unwrap()["moderator_domain"],
+        "localhost"
+    );
+    let listed: serde_json::Value =
+        serde_json::from_str(&ok(home, &["--json", "endorsement", "list"])).unwrap();
+    assert_eq!(listed[0]["moderator_domain"], "localhost");
+    ok(
+        home,
+        &[
+            "moderator",
+            "add",
+            "other",
+            &format!("{origin}/moderator/other-config"),
+        ],
+    );
+    let rejected = run(
+        home,
+        &[
+            "credential",
+            "issue",
+            "--moderator",
+            "other",
+            "--endorsement",
+            &id,
+        ],
+    );
+    assert!(!rejected.status.success());
+    assert!(
+        String::from_utf8_lossy(&rejected.stderr)
+            .contains("scoped to `localhost`, not `different.example`")
+    );
+    assert_eq!(ok(home, &["--json", "endorsement", "show", &id]), before);
+
     assert_eq!(
         ok(
             home,
@@ -724,9 +779,26 @@ fn approval_needs_input() {
             &format!("{}/anchor/config", server.origin),
         ],
     );
+    ok(
+        home.path(),
+        &[
+            "moderator",
+            "add",
+            "m",
+            &format!("{}/moderator/config", server.origin),
+        ],
+    );
     let output = run(
         home.path(),
-        &["--no-input", "endorsement", "request", "--anchor", "a"],
+        &[
+            "--no-input",
+            "endorsement",
+            "request",
+            "--anchor",
+            "a",
+            "--moderator",
+            "m",
+        ],
     );
     assert!(!output.status.success());
     assert!(String::from_utf8_lossy(&output.stderr).contains("requires approval in a browser"));
@@ -746,7 +818,39 @@ fn plain_anchor_and_removal() {
             &format!("{}/anchor/config", server.origin),
         ],
     );
-    let id = endorse(home, &server);
+    ok(
+        home,
+        &[
+            "moderator",
+            "add",
+            "m",
+            &format!("{}/moderator/no-endorsement-config", server.origin),
+        ],
+    );
+    let output = run(
+        home,
+        &[
+            "--json",
+            "endorsement",
+            "request",
+            "--anchor",
+            "a",
+            "--moderator",
+            "m",
+        ],
+    );
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        String::from_utf8_lossy(&output.stderr)
+            .contains("saved configuration for `m` does not accept")
+    );
+    let result: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(result["moderator_domain"], "localhost");
+    let id = result["ids"][0].as_str().unwrap().to_owned();
     assert!(
         !run(home, &["endorsement", "remove", &id]).status.success(),
         "non-interactive removal needs --force"

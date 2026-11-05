@@ -7,7 +7,7 @@ cargo +nightly fuzz run grant -- -max_len=131073
 cargo +nightly fuzz run http -- -dict=fuzz/http.dict
 ```
 
-`grant` exercises grant requests, both client response phases and pending-state decoding.
+`grant` exercises grant requests, both client response phases, pending-state decoding and endorsement storage.
 Includes one byte above the network size cap. Local state is never used to
 authorize an operation.
 
