@@ -16,7 +16,6 @@ updates:
         exclude-patterns:
           - ec-act
           - ec-ihat
-          - mole-p256
 
   # TypeScript tooling for tests/browser.ts and scripts/; dev-only.
   - package-ecosystem: npm

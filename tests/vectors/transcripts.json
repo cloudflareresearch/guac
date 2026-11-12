@@ -1,8 +1,7 @@
 {
   "version": 2,
   "draft": "draft-jms-mole-protocols and draft-jms-mole-http-transport, PR #138 (d68ef1bf)",
-  "act_revision": "7b7aca7cdef11dc558c089b8345ffe51a81554c9",
-  "ihat_revision": "7b7aca7cdef11dc558c089b8345ffe51a81554c9",
+  "mole_revision": "7b7aca7cdef11dc558c089b8345ffe51a81554c9",
   "generation": "captured OS-random transcripts; not deterministic regeneration",
   "cases": [
     {

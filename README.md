@@ -99,7 +99,7 @@ The library leaves storage to you. We provide `MemoryStore` for testing and exam
 
 Implement [`GrantStore`](src/storage.rs) for an Anchor and [`Store`](src/storage.rs) for a Moderator. Storage must be durable and shared by all servers using the same keys and context. Both require atomic insert-if-absent. `GrantStore` also requires an atomic take: replace the pending session with a consumed marker until expiry, even if the grant response fails. Reusing that session can leak the Anchor key.
 
-`Anchor::to_secret_bytes` and `Moderator::to_secret_bytes` export 48-byte key seeds. Their `from_secret` methods restore from those seeds, and `Moderator::new` takes a seed with its configuration. This breaks the previous 32-byte Moderator scalar API and storage format. Old scalars cannot be imported: generate a new key and publish its configuration. Credentials under the old Moderator key stop working. Earlier 32-byte Anchor scalars likewise need new keys, invalidating endorsements under the old key.
+`Anchor::to_secret_bytes` and `Moderator::to_secret_bytes` export 48-byte key seeds, which `from_secret` restores. Keys saved as 32-byte scalars by earlier revisions cannot be imported: generate new keys and publish their configuration.
 
 ### Persisting a client
 

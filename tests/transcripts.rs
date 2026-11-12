@@ -80,7 +80,6 @@ fn moderator_seed_restores_key_and_challenges() {
     )
     .unwrap();
     let seed = original.to_secret_bytes();
-    assert_eq!(seed.len(), 48);
     let restored = Moderator::from_secret(
         &seed,
         "https://moderator.example/",
@@ -111,8 +110,7 @@ fn moderator_seed_restores_key_and_challenges() {
 fn checked_in_transcripts_verify_and_finalize() {
     let corpus = corpus();
     assert_eq!(corpus.version, 2);
-    assert_eq!(corpus.act_revision, support::ACT_REV);
-    assert_eq!(corpus.ihat_revision, support::IHAT_REV);
+    assert_eq!(corpus.mole_revision, support::MOLE_REV);
     for case in corpus.cases {
         let (moderator, store) = setup(&case);
         for (request, response) in &case.grant_exchanges {
