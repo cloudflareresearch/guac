@@ -10,8 +10,8 @@ use guac::{
 };
 use serde::{Deserialize, Serialize};
 
-pub const ACT_REV: &str = "f1bd64b90408677662bb9f96915d8dc0e58e1ad6";
-pub const IHAT_REV: &str = "ed756147ac9a1cc530d718e749c0fae8090fda7c";
+pub const ACT_REV: &str = "7b7aca7cdef11dc558c089b8345ffe51a81554c9";
+pub const IHAT_REV: &str = ACT_REV;
 
 #[derive(Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]

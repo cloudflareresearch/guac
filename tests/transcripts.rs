@@ -70,6 +70,44 @@ fn setup(case: &support::Transcript) -> (Moderator, MemoryStore) {
 const OPERATION: &[u8] = b"operation-1";
 
 #[test]
+fn moderator_seed_restores_key_and_challenges() {
+    let original = Moderator::generate(
+        "https://moderator.example/",
+        4,
+        b"credits-1".to_vec(),
+        EndorsementPolicy::NotRequired,
+        60,
+    )
+    .unwrap();
+    let seed = original.to_secret_bytes();
+    assert_eq!(seed.len(), 48);
+    let restored = Moderator::from_secret(
+        &seed,
+        "https://moderator.example/",
+        4,
+        b"credits-1".to_vec(),
+        EndorsementPolicy::NotRequired,
+        60,
+    )
+    .unwrap();
+    assert_eq!(restored.to_secret_bytes(), seed);
+    assert_eq!(
+        restored.configuration().public_key(),
+        original.configuration().public_key()
+    );
+    assert_eq!(
+        restored.redemption_challenge(100).unwrap(),
+        original.redemption_challenge(100).unwrap()
+    );
+    let mut wrong_seed = seed.clone();
+    wrong_seed[0] ^= 1;
+    assert!(matches!(
+        Moderator::new(&wrong_seed, original.configuration().clone()),
+        Err(Error::Mismatch)
+    ));
+}
+
+#[test]
 fn checked_in_transcripts_verify_and_finalize() {
     let corpus = corpus();
     assert_eq!(corpus.version, 2);

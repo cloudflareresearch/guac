@@ -171,7 +171,7 @@ for (const test of cases) {
 
   // No client-only secret may remain anywhere in Wasm memory once everything is freed.
   // Not checked: k (the nullifier, public once presented), c/A/e (sent by the issuer)
-  // and the spend amounts (low entropy). Offsets follow the act-rs encodings.
+  // and the spend amounts (low entropy). Offsets follow the ec-act encodings.
   const credential_raw = Uint8Array.fromHex(test.credential_raw); // k | c | r | A | e
   const issuance_raw = Uint8Array.fromHex(test.issuance_state_raw); // k | r | K
   const spend_raw = Uint8Array.fromHex(test.presentation_state_raw); // k* | r* | v1 | s | a | K'

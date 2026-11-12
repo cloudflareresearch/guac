@@ -3,19 +3,6 @@
 version = 4
 
 [[package]]
-name = "act-rs"
-version = "0.1.0"
-source = "git+https://github.com/Moderation-of-unLinkable-Endorsements/act-rs?rev=f1bd64b90408677662bb9f96915d8dc0e58e1ad6#f1bd64b90408677662bb9f96915d8dc0e58e1ad6"
-dependencies = [
- "getrandom",
- "p256",
- "sha2",
- "shake",
- "subtle",
- "zeroize",
-]
-
-[[package]]
 name = "arbitrary"
 version = "1.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -172,6 +159,27 @@ dependencies = [
 ]
 
 [[package]]
+name = "ec-act"
+version = "0.1.0"
+source = "git+https://github.com/Moderation-of-unLinkable-Endorsements/mole-p256-rs?rev=7b7aca7cdef11dc558c089b8345ffe51a81554c9#7b7aca7cdef11dc558c089b8345ffe51a81554c9"
+dependencies = [
+ "mole-p256",
+ "shake",
+ "subtle",
+ "zeroize",
+]
+
+[[package]]
+name = "ec-ihat"
+version = "0.1.0"
+source = "git+https://github.com/Moderation-of-unLinkable-Endorsements/mole-p256-rs?rev=7b7aca7cdef11dc558c089b8345ffe51a81554c9#7b7aca7cdef11dc558c089b8345ffe51a81554c9"
+dependencies = [
+ "mole-p256",
+ "subtle",
+ "zeroize",
+]
+
+[[package]]
 name = "ecdsa"
 version = "0.17.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -255,12 +263,12 @@ dependencies = [
 name = "guac"
 version = "0.1.0"
 dependencies = [
- "act-rs",
  "base64",
+ "ec-act",
+ "ec-ihat",
  "getrandom",
  "hmac",
  "http-auth",
- "ihat-rs",
  "sha2",
  "thiserror",
  "url",
@@ -419,18 +427,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "ihat-rs"
-version = "0.1.0"
-source = "git+https://github.com/Moderation-of-unLinkable-Endorsements/ihat-rs?rev=ed756147ac9a1cc530d718e749c0fae8090fda7c#ed756147ac9a1cc530d718e749c0fae8090fda7c"
-dependencies = [
- "getrandom",
- "p256",
- "sha2",
- "subtle",
- "zeroize",
-]
-
-[[package]]
 name = "jobserver"
 version = "0.1.35"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -477,6 +473,18 @@ name = "memchr"
 version = "2.8.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cf8baf1c55e62ffcace7a9f06f4bd9cd3f0c4beb022d3b367256b91b87513d98"
+
+[[package]]
+name = "mole-p256"
+version = "0.1.0"
+source = "git+https://github.com/Moderation-of-unLinkable-Endorsements/mole-p256-rs?rev=7b7aca7cdef11dc558c089b8345ffe51a81554c9#7b7aca7cdef11dc558c089b8345ffe51a81554c9"
+dependencies = [
+ "getrandom",
+ "p256",
+ "sha2",
+ "subtle",
+ "zeroize",
+]
 
 [[package]]
 name = "num-traits"
