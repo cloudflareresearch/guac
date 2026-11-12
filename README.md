@@ -99,7 +99,7 @@ The library leaves storage to you. We provide `MemoryStore` for testing and exam
 
 Implement [`GrantStore`](src/storage.rs) for an Anchor and [`Store`](src/storage.rs) for a Moderator. Storage must be durable and shared by all servers using the same keys and context. Both require atomic insert-if-absent. `GrantStore` also requires an atomic take: replace the pending session with a consumed marker until expiry, even if the grant response fails. Reusing that session can leak the Anchor key.
 
-`Anchor::to_secret_bytes` exports the 48-byte EC-IHAT key seed and `Anchor::from_secret` restores from it; the Moderator secret stays a 32-byte scalar. Anchor secrets saved by earlier revisions were 32-byte scalars, which EC-IHAT can no longer import: generate a new Anchor key, publish its configuration, and expect endorsements under the old key to stop redeeming.
+`Anchor::to_secret_bytes` and `Moderator::to_secret_bytes` export 48-byte key seeds, which `from_secret` restores. Keys saved as 32-byte scalars by earlier revisions cannot be imported: generate new keys and publish their configuration.
 
 ### Persisting a client
 

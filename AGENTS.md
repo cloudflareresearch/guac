@@ -39,7 +39,7 @@ cargo run --locked --example generate_vectors   # only when vectors must change
 
 CI (`.github/workflows/ci.yml`) runs the same on pushes to `main` and on pull
 requests. Dependabot (`.github/dependabot.yml`) opens weekly grouped updates for
-Cargo (root and `fuzz/`), npm and GitHub Actions; `act-rs` / `ihat-rs` bumps come
+Cargo (root and `fuzz/`), npm and GitHub Actions; `mole-p256-rs` bumps come
 separately because they need regenerated vectors.
 
 ## Constraints
@@ -60,7 +60,7 @@ separately because they need regenerated vectors.
 - Bring your own I/O: no HTTP client, clock, RNG policy or storage backend in
   the library. Times are Unix seconds passed in by the caller.
 - Crypto: only SHA-256, HMAC-SHA-256 and the OS CSPRNG via `getrandom`. Never hand-roll primitives; protocol crypto comes
-  from the pinned `act-rs` / `ihat-rs` revisions. Bumping them is its own
+  from the pinned `mole-p256-rs` revision. Bumping it is its own
   change: regenerate vectors.
 - Do not claim FIPS compliance or swap cryptographic backends without review.
 - Wire formats follow the MOLE drafts. Raise deviations upstream.

@@ -83,6 +83,7 @@ impl Acceptance {
 /// One Moderator key and credential context. Holds no mutable state: replay
 /// records live in a `Store`, and challenges are authenticated, not stored.
 pub struct Moderator {
+    seed: Zeroizing<[u8; act::SEED_LENGTH]>,
     key: act::SecretKey,
     config: ModeratorConfig,
     challenge_key: Zeroizing<[u8; 32]>,
@@ -99,11 +100,10 @@ impl Moderator {
         endorsements: EndorsementPolicy,
         result_retention_seconds: u64,
     ) -> Result<Self, Error> {
-        let mut seed = Zeroizing::new([0; 48]);
+        let mut seed = Zeroizing::new([0; act::SEED_LENGTH]);
         getrandom::fill(&mut *seed).map_err(|_| Error::Entropy)?;
-        let key: act::SecretKey = act::SecretKey::from_seed(&seed, b"GenerateKeyPair")?;
         Self::from_secret(
-            &Zeroizing::new(key.to_bytes()),
+            &seed,
             endpoint,
             balance_bits,
             context,
@@ -112,16 +112,16 @@ impl Moderator {
         )
     }
 
-    /// Derives the public configuration from a host-held secret.
+    /// Derives the public configuration from a host-held key seed.
     pub fn from_secret(
-        secret: &[u8; 32],
+        seed: &[u8; act::SEED_LENGTH],
         endpoint: &str,
         balance_bits: u8,
         context: Vec<u8>,
         endorsements: EndorsementPolicy,
         result_retention_seconds: u64,
     ) -> Result<Self, Error> {
-        let key: act::SecretKey = act::SecretKey::from_bytes(secret)?;
+        let key: act::SecretKey = act::SecretKey::from_seed(seed)?;
         let config = ModeratorConfig::new(
             endpoint,
             &key.public_key().to_bytes(),
@@ -130,16 +130,20 @@ impl Moderator {
             endorsements,
             result_retention_seconds,
         )?;
-        Self::new(secret, config)
+        Self::new(seed, config)
     }
 
-    pub fn new(secret: &[u8; 32], configuration: ModeratorConfig) -> Result<Self, Error> {
-        let key = act::SecretKey::from_bytes(secret)?;
+    pub fn new(
+        seed: &[u8; act::SEED_LENGTH],
+        configuration: ModeratorConfig,
+    ) -> Result<Self, Error> {
+        let key = act::SecretKey::from_seed(seed)?;
         if key.public_key() != configuration.key {
             return Err(Error::Mismatch);
         }
-        let challenge_key = Zeroizing::new(mac(secret, &[b"guac challenge key v1"]));
+        let challenge_key = Zeroizing::new(mac(seed, &[b"guac challenge key v1"]));
         Ok(Self {
+            seed: Zeroizing::new(*seed),
             key,
             config: configuration,
             challenge_key,
@@ -169,9 +173,9 @@ impl Moderator {
         &self.config
     }
 
-    /// Secret key export for host-managed secure storage.
-    pub fn to_secret_bytes(&self) -> Zeroizing<[u8; 32]> {
-        Zeroizing::new(self.key.to_bytes())
+    /// Secret key seed export for host-managed secure storage.
+    pub fn to_secret_bytes(&self) -> Zeroizing<[u8; act::SEED_LENGTH]> {
+        self.seed.clone()
     }
 
     /// Deterministic, policy-scoped challenge for the window containing `now`.

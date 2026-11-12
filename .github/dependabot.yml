@@ -14,8 +14,8 @@ updates:
         # Bumping the protocol crypto revisions is its own change: it needs
         # regenerated vectors, so keep those PRs separate.
         exclude-patterns:
-          - act-rs
-          - ihat-rs
+          - ec-act
+          - ec-ihat
 
   # TypeScript tooling for tests/browser.ts and scripts/; dev-only.
   - package-ecosystem: npm

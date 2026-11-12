@@ -9,8 +9,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         version: 2,
         draft: "draft-jms-mole-protocols and draft-jms-mole-http-transport, PR #138 (d68ef1bf)"
             .into(),
-        act_revision: support::ACT_REV.into(),
-        ihat_revision: support::IHAT_REV.into(),
+        mole_revision: support::MOLE_REV.into(),
         generation: "captured OS-random transcripts; not deterministic regeneration".into(),
         cases: vec![
             support::capture("anchor-0", Some(0), ReturnCredits(1))?,
