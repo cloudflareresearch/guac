@@ -5,17 +5,10 @@
 //! Grant bodies are bytes with `ENDORSEMENT_REQUEST`/`ENDORSEMENT_RESPONSE`
 //! media types.
 //!
-//! Errors are `Error` objects whose `code` is an `ErrorCode`: the
-//! `crate::Error` variant in lower case (`amount`, `malformed`, `mismatch`, …),
-//! `consumed` for a handle whose state was already used, or `missing` for an
-//! absent `Mole-Credential`.
+//! Errors are `Error` objects whose `code` is an `ErrorCode`.
 //!
-//! Handles keep secret state in Wasm memory: `free()` or `using` wipes it
-//! deterministically, garbage collection only eventually. `toStorageBytes`
-//! returns a secret copy that the host must store and wipe itself. Restoring a
-//! snapshot whose state was already used rolls back single use, and the server
-//! rejects the reuse; keeping one state live in two tabs or workers is the
-//! same mistake. Ownership across contexts is the host's.
+//! Treat stored snapshots as secrets. Do not reuse consumed state or share it
+//! across tabs or workers.
 //!
 //! Every call is synchronous and CPU-bound (a presentation takes tens of
 //! milliseconds): run the module in a Web Worker and reuse configurations.
